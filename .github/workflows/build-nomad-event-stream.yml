@@ -1,0 +1,26 @@
+---
+
+name: Build nomad-event-stream app
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*.**" ]
+    paths: 
+    - ".github/workflows/build-nomad-event-stream.yml"
+    - "go.*"
+    - "nomad-event-stream/**"
+  pull_request:
+    branches: [ "main" ]
+    paths: 
+    - ".github/workflows/build-nomad-event-stream.yml"
+    - "go.*"
+    - "nomad-event-stream/**"
+
+jobs:
+  build-docker-image:
+    uses: ./.github/workflows/docker-generic.yml
+    with:
+      output-registry: "ghcr.io"
+      output-repository-path: "${{ github.repository }}/nomad-event-stream"
+      dockerfile-path: "./nomad-event-stream/Dockerfile"
