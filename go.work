@@ -1,3 +1,4 @@
-go 1.18
+go 1.21.5
 
 use ./nomad-event-stream
+use ./nomad-service-cleaner

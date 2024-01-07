@@ -19,7 +19,7 @@ on:
 
 jobs:
   build-docker-image:
-    uses: ./.github/workflows/docker-generic.yml
+    uses: pirogoeth/workflows/.github/workflows/docker-generic.yml@main
     with:
       output-registry: "ghcr.io"
       output-repository-path: "${{ github.repository }}/nomad-event-stream"
