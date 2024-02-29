@@ -3,9 +3,9 @@
 
 # This setting contains a list of rules that Sweep will check for. If any of these rules are broken in a new commit, Sweep will create an pull request to fix the broken rule.
 rules:
-  - "All new business logic should have corresponding unit tests."
-  - "Refactor large functions to be more modular."
-  - "Add docstrings to all functions and file headers."
+  - "All library code (inside `pkg`) should have unit tests if it is sufficiently complex."
+  - "Refactor sufficiently large, complex functions to be more modular."
+  - "Add docstrings to all functions and types, where applicable."
 
 # This is the branch that Sweep will develop from and make pull requests to. Most people use 'main' or 'master' but some users also use 'dev' or 'staging'.
 branch: 'main'
@@ -18,7 +18,9 @@ gha_enabled: True
 # Example:
 #
 # description: sweepai/sweep is a python project. The main api endpoints are in sweepai/api.py. Write code that adheres to PEP8.
-description: ''
+description: |
+  pirogoeth/apps is a Golang application monorepo. Currently, all API apps are using github.com/gin-gonic/gin as the API framework. The monorepo also contains
+  some common library code that's useful for subapps. The common code is to be stored in the `pkg` directory. Ensure all code is properly `go fmt`'d before committing.
 
 # This sets whether to create pull requests as drafts. If this is set to True, then all pull requests will be created as drafts and GitHub Actions will not be triggered.
 draft: False
