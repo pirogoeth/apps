@@ -1,5 +1,5 @@
 variable "version" {
-    description = "Deployment version"
+    description = "App deployment version"
 }
 
 job "nomad-event-stream" {
