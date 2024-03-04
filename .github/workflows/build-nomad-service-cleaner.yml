@@ -6,15 +6,17 @@ on:
   push:
     branches: [ "main" ]
     tags: [ "v*.**" ]
-    paths: 
+    paths:
     - ".github/workflows/build-nomad-service-cleaner.yml"
     - "go.*"
+    - "pkg/**"
     - "nomad-service-cleaner/**"
   pull_request:
     branches: [ "main" ]
-    paths: 
+    paths:
     - ".github/workflows/build-nomad-service-cleaner.yml"
     - "go.*"
+    - "pkg/**"
     - "nomad-service-cleaner/**"
 
 jobs:

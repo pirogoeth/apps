@@ -1,4 +1,7 @@
 go 1.21.5
 
-use ./nomad-event-stream
-use ./nomad-service-cleaner
+use (
+	./nomad-deployer
+	./nomad-event-stream
+	./nomad-service-cleaner
+)
