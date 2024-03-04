@@ -115,7 +115,7 @@ EOH
         change_mode = "signal"
         change_signal = "SIGHUP"
 
-        dest = "$NOMAD_ALLOC_DIR/redis.conf"
+        destination = "$NOMAD_ALLOC_DIR/redis.conf"
         data = <<EOF
 port 6379
 dir /data/rdb
