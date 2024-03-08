@@ -1,0 +1,12 @@
+---
+
+- name: "nomad-event-stream_redis-data-1"
+  capacity: "16 GB"
+  csiPlugin: "truenas"
+  capabilities:
+  - AccessMode: "single-node-reader-only"
+    AttachmentMode: "file-system"
+  - AccessMode: "single-node-writer"
+    AttachmentMode: "file-system"
+  mountOptions:
+    FSType: "nfs"
