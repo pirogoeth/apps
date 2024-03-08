@@ -95,9 +95,6 @@ EOH
         image = "redis:latest"
         force_pull = true
         ports = ["redis"]
-        args = [
-          "--config", "$NOMAD_ALLOC_DIR/redis.conf"
-        ]
 
         labels = {
           appname = "nomad-event-stream"
@@ -115,7 +112,7 @@ EOH
         change_mode = "signal"
         change_signal = "SIGHUP"
 
-        destination = "$NOMAD_ALLOC_DIR/redis.conf"
+        destination = "/usr/local/etc/redis/redis.conf"
         data = <<EOF
 port 6379
 dir /data/rdb
