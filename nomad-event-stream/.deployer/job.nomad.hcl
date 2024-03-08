@@ -52,9 +52,9 @@ job "nomad-event-stream" {
 
         data = <<EOH
 NOMAD_ADDR=https://10.100.10.32:4646
-NOMAD_CACERT=/opt/nomad/tls/ca.pem
-NOMAD_CERT=/opt/nomad/tls/cert.pem
-NOMAD_KEY=/opt/nomad/tls/key.pem
+NOMAD_CACERT=/opt/nomad/tls/nomad-agent-ca.pem
+NOMAD_CERT=/opt/nomad/tls/global-cli-nomad.pem
+NOMAD_KEY=/opt/nomad/tls/global-cli-nomad-key.pem
 NOMAD_SKIP_VERIFY=true
 
 REDIS_STREAM=nomad:events
