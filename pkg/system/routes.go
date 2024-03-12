@@ -32,3 +32,4 @@ func GetReadiness(c *gin.Context) {
 		"components": components,
 	})
 }
+	RegisterNomadExternalDNSRoutes(router)
