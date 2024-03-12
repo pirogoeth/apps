@@ -93,6 +93,20 @@ func registerNomadClientReadiness(nomadClient *nomadApi.Client) {
 }
 
 func githubClientHealthCheck(ctx context.Context, ghClient *github.Client) error {
+	// Register nomad-external-dns app
+	nomadExternalDNSConfig, err := config.Load[nomadExternalDNS.Config]()
+	if err != nil {
+		panic(fmt.Errorf("could not load nomad-external-dns config: %w", err))
+	}
+	nomadExternalDNSClient, err := initializeNomadExternalDNSClient(nomadExternalDNSConfig)
+	if err != nil {
+		panic(fmt.Errorf("could not create nomad-external-dns client: %w", err))
+	}
+	if err := nomadExternalDNSHealthCheck(ctx, nomadExternalDNSClient); err != nil {
+		panic(fmt.Errorf("nomad-external-dns client not healthy: %w", err))
+	}
+	registerNomadExternalDNSReadiness(nomadExternalDNSClient)
+	defer nomadExternalDNSClient.Close()
 	currentUser, _, err := ghClient.Users.Get(ctx, "")
 	if err != nil {
 		return fmt.Errorf("could not check github client user: %w", err)
