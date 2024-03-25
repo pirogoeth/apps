@@ -5,12 +5,9 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/go-github/v58/github"
-	"github.com/gregjones/httpcache"
 	nomadApi "github.com/hashicorp/nomad/api"
 	"github.com/sirupsen/logrus"
 
-	"github.com/pirogoeth/apps/nomad-deployer/api"
 	"github.com/pirogoeth/apps/nomad-deployer/types"
 	"github.com/pirogoeth/apps/pkg/config"
 	"github.com/pirogoeth/apps/pkg/logging"
@@ -34,15 +31,6 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Create Github client
-	ghClient := github.NewClient(
-		httpcache.NewMemoryCacheTransport().Client(),
-	).WithAuthToken(app.cfg.Github.AuthToken)
-	if err := system.GithubClientHealthCheck(ctx, ghClient); err != nil {
-		panic(fmt.Errorf("github client not healthy: %w", err))
-	}
-	system.RegisterGithubClientReadiness(ghClient)
-
 	// Create Nomad client
 	nomadOpts := nomadApi.DefaultConfig()
 	nomadClient, err := nomadApi.NewClient(nomadOpts)
@@ -62,13 +50,7 @@ func main() {
 	}))
 	router.Use(gin.Recovery())
 	router.Use(middlewares.PrettifyResponseJSON)
-
-	api.MustRegister(router, &types.ApiContext{
-		Config: app.cfg,
-		Github: ghClient,
-		Nomad:  nomadClient,
-	})
-
+	system.RegisterSystemRoutesTo(router.Group("/sys"))
 	router.Run(app.cfg.HTTP.ListenAddress)
 
 	cancel()

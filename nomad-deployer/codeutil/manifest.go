@@ -8,21 +8,74 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/c2h5oh/datasize"
+	"github.com/ghodss/yaml"
 	"github.com/google/go-github/v58/github"
 	"github.com/hashicorp/nomad/api"
+	nomadApi "github.com/hashicorp/nomad/api"
 	"github.com/hashicorp/nomad/jobspec2"
 )
 
 type DeploymentManifest struct {
-	// Job is the parsed version of the Nomad job as loaded from the repo
-	Job *api.Job
 	// Ref is the source git ref of the deployment manifest
 	Ref *DeployableRef
+	// Job is the parsed version of the Nomad job as loaded from the repo
+	Job *nomadApi.Job
+	// Volumes is the list of Nomad volumes that are bundled with this job.
+	Volumes map[string]*nomadApi.CSIVolume
+}
+
+type Volume struct {
+	Name         string                          `json:"name"`
+	Capacity     datasize.ByteSize               `json:"size"`
+	CSIPlugin    string                          `json:"csiPlugin"`
+	Capabilities []*nomadApi.CSIVolumeCapability `json:"capabilities"`
+	Topology     *nomadApi.CSITopologyRequest    `json:"topology"`
+	MountOptions *nomadApi.CSIMountOptions       `json:"mountOptions"`
+}
+
+func (v *Volume) ToCSIVolume() *nomadApi.CSIVolume {
+	return &nomadApi.CSIVolume{
+		ID:                    v.Name,
+		Name:                  v.Name,
+		PluginID:              v.CSIPlugin,
+		RequestedCapacityMin:  int64(v.Capacity.Bytes()),
+		RequestedCapacityMax:  int64(v.Capacity.Bytes()),
+		RequestedCapabilities: v.Capabilities,
+		MountOptions:          v.MountOptions,
+	}
 }
 
 func GetDeploymentManifest(ctx context.Context, githubClient *github.Client, repo *github.Repository, deployRef *DeployableRef, path string, variables map[string]string) (*DeploymentManifest, error) {
 	path = strings.TrimPrefix(path, "/")
 
+	jobSpec, err := GetDeploymentJobspec(ctx, githubClient, repo, deployRef, path, variables)
+	if err != nil {
+		return nil, fmt.Errorf("could not get jobspec for deployment manifest: %w", err)
+	}
+
+	jobSpec.SetMeta("sourceRef", deployRef.Ref)
+	for k, v := range variables {
+		jobSpec.SetMeta("deployVar_"+k, v)
+	}
+
+	volumes, err := GetDeploymentVolumes(ctx, githubClient, repo, deployRef, path)
+	if err != nil {
+		return nil, fmt.Errorf("could not get volumes for deployment manifest: %w", err)
+	}
+
+	for _, volume := range volumes {
+		volume.Namespace = *jobSpec.Namespace
+	}
+
+	return &DeploymentManifest{
+		Ref:     deployRef,
+		Job:     jobSpec,
+		Volumes: volumes,
+	}, nil
+}
+
+func GetDeploymentJobspec(ctx context.Context, githubClient *github.Client, repo *github.Repository, deployRef *DeployableRef, path string, variables map[string]string) (*api.Job, error) {
 	manifestPath := fmt.Sprintf("%s/.deployer/job.nomad.hcl", path)
 	manifestFile, _, err := githubClient.Repositories.DownloadContents(
 		ctx,
@@ -69,10 +122,54 @@ func GetDeploymentManifest(ctx context.Context, githubClient *github.Client, rep
 		)
 	}
 
-	return &DeploymentManifest{
-		Job: job,
-		Ref: deployRef,
-	}, nil
+	return job, nil
+}
+
+func GetDeploymentVolumes(ctx context.Context, githubClient *github.Client, repo *github.Repository, deployRef *DeployableRef, appPath string) (map[string]*api.CSIVolume, error) {
+	volumesPath := fmt.Sprintf("%s/.deployer/volumes.yaml", appPath)
+	volumesFile, _, err := githubClient.Repositories.DownloadContents(
+		ctx,
+		repo.GetOwner().GetLogin(),
+		repo.GetName(),
+		volumesPath,
+		&github.RepositoryContentGetOptions{
+			Ref: deployRef.Commit.GetSHA(),
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"could not fetch volumes file (from `%s`) for commit '%s' in repository '%s': %w",
+			volumesPath,
+			deployRef.Commit.GetSHA(),
+			repo.GetFullName(),
+			err,
+		)
+	}
+
+	rawVolumesFile := new(bytes.Buffer)
+	_, err = io.Copy(rawVolumesFile, volumesFile)
+	if err != nil {
+		return nil, fmt.Errorf("could not copy volumes file content to buffer: %w", err)
+	}
+	volumesFile.Close()
+
+	var volumesManifest []*Volume
+	if err := yaml.Unmarshal(rawVolumesFile.Bytes(), &volumesManifest); err != nil {
+		return nil, fmt.Errorf(
+			"could not parse volumes file (from `%s`) for commit '%s' in repository '%s': %w",
+			volumesPath,
+			deployRef.Commit.GetSHA(),
+			repo.GetFullName(),
+			err,
+		)
+	}
+
+	volumes := make(map[string]*nomadApi.CSIVolume, 0)
+	for _, volume := range volumesManifest {
+		volumes[volume.Name] = volume.ToCSIVolume()
+	}
+
+	return volumes, nil
 }
 
 func generateEnvVars(repo *github.Repository, deployRef *DeployableRef, path string) []string {

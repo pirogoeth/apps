@@ -12,5 +12,5 @@ func MustRegister(router *gin.Engine, apiContext *types.ApiContext) {
 
 	groupV1 := router.Group("/v1")
 	v1Deploy := &v1DeployEndpoints{apiContext}
-	groupV1.POST("/deploy", v1Deploy.postV1Deploy)
+	v1Deploy.RegisterRoutesTo(groupV1)
 }

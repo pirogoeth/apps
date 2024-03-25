@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
 
+	appCfg "github.com/pirogoeth/apps/nomad-event-stream/config"
 	"github.com/pirogoeth/apps/pkg/config"
 	"github.com/pirogoeth/apps/pkg/logging"
 )
@@ -47,13 +48,13 @@ var (
 )
 
 type App struct {
-	cfg *Config
+	cfg *appCfg.Config
 }
 
 func main() {
 	logging.Setup()
 
-	cfg, err := config.Load[Config]()
+	cfg, err := config.Load[appCfg.Config]()
 	if err != nil {
 		panic(fmt.Errorf("could not start (config): %w", err))
 	}
