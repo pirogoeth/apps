@@ -1,7 +1,10 @@
 package system
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
@@ -13,6 +16,7 @@ const (
 func RegisterSystemRoutesTo(router *gin.RouterGroup) {
 	router.GET("/liveness", GetLiveness)
 	router.GET("/readiness", GetReadiness)
+	router.GET("/metrics", HttpHandlerToGinHandler(promhttp.Handler()))
 }
 
 // GetLiveness returns a simple ping response to indicate the service is alive
@@ -31,4 +35,10 @@ func GetReadiness(c *gin.Context) {
 		"status":     status,
 		"components": components,
 	})
+}
+
+func HttpHandlerToGinHandler(handler http.Handler) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		handler.ServeHTTP(ctx.Writer, ctx.Request)
+	}
 }

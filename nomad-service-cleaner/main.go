@@ -3,11 +3,16 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
+	"github.com/go-co-op/gocron/v2"
 	nomadApi "github.com/hashicorp/nomad/api"
 	"github.com/pirogoeth/apps/pkg/config"
 	"github.com/pirogoeth/apps/pkg/logging"
+	"github.com/pirogoeth/apps/pkg/system"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -18,6 +23,10 @@ var (
 	metricDanglingServicesCleaned = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "dangling_services_cleaned_total",
 		Help: "Total number of dangling services cleaned",
+	})
+	metricDanglingServicesProcessTime = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name: "dangling_services_process_time",
+		Help: "Amount of time taken to search & process dangling services",
 	})
 )
 
@@ -33,10 +42,15 @@ type App struct {
 
 func main() {
 	logging.Setup()
+	prometheus.MustRegister(
+		metricDanglingServicesCleaned,
+		metricDanglingServicesFound,
+		metricDanglingServicesProcessTime,
+	)
 
 	cfg, err := config.Load[Config]()
 	if err != nil {
-		panic(fmt.Errorf("could not start (config): %w", err))
+		logrus.Fatalf("could not start (config): %w", err)
 	}
 
 	app := &App{cfg}
@@ -47,14 +61,37 @@ func main() {
 	nomadOpts := nomadApi.DefaultConfig()
 	nomadClient, err := nomadApi.NewClient(nomadOpts)
 	if err != nil {
-		panic(fmt.Errorf("could not create nomad client: %w", err))
+		logrus.Fatalf("could not create nomad client: %w", err)
 	}
+	if err := system.NomadClientHealthCheck(ctx, nomadClient); err != nil {
+		panic(fmt.Errorf("nomad client not healthy: %w", err))
+	}
+	system.RegisterNomadClientReadiness(nomadClient)
 	defer nomadClient.Close()
 
-	if err := app.cleanDanglingServices(ctx, nomadClient); err != nil {
-		panic(fmt.Errorf("could not clean dangling services: %w", err))
+	sched, err := gocron.NewScheduler()
+	if err != nil {
+		logrus.Fatalf("could not created scheduler: %w", err)
 	}
 
+	_, err = sched.NewJob(gocron.DurationJob(5*time.Minute), gocron.NewTask(func() {
+		logrus.Debugf("Running dangling service cleaner")
+		t := prometheus.NewTimer(metricDanglingServicesProcessTime)
+		if err := app.cleanDanglingServices(ctx, nomadClient); err != nil {
+			logrus.Fatalf("could not clean dangling services: %w", err)
+		}
+		t.ObserveDuration()
+	}))
+	if err != nil {
+		panic(fmt.Errorf("could not schedule job: %w", err))
+	}
+
+	sched.Start()
+
+	router := system.DefaultRouter()
+	router.Run(app.cfg.HTTP.ListenAddress)
+
+	sched.Shutdown()
 	cancel()
 }
 
@@ -94,7 +131,7 @@ func (app *App) cleanDanglingServices(ctx context.Context, nomadClient *nomadApi
 				alloc, _, err := nomadClient.Allocations().Info(svcRegistration.AllocID, &nomadApi.QueryOptions{
 					Namespace: namespace,
 				})
-				if err != nil && err.Error() == "404 (Not Found)" {
+				if err != nil && strings.Contains(err.Error(), "alloc not found") {
 					// I don't know if this is actually Nomad's 404 return, check this ^^
 					// Add this service ID and allocation ID to list of dangling entries
 					danglingSvcs = append(danglingSvcs, &danglingSvc{
@@ -103,7 +140,12 @@ func (app *App) cleanDanglingServices(ctx context.Context, nomadClient *nomadApi
 						serviceID:   svcRegistration.ID,
 					})
 				} else if err != nil {
-					return fmt.Errorf("could not get allocation %s: %w (%#v)", svcRegistration.AllocID, err, err)
+					return fmt.Errorf("could not get allocation %s / %s in ns %s: %w (%#v)",
+						svcRegistration.AllocID,
+						serviceName,
+						namespace,
+						err,
+						err)
 				} else if alloc.ClientStatus == nomadApi.AllocClientStatusFailed {
 					// TODO: Check if alloc has been in terminal status > 5min or desired state is terminal??
 					// Add this service ID and allocation ID to list of dangling entries
@@ -121,7 +163,7 @@ func (app *App) cleanDanglingServices(ctx context.Context, nomadClient *nomadApi
 		metricDanglingServicesFound.Add(float64(len(danglingSvcs)))
 
 		for _, danglingSvc := range danglingSvcs {
-			fmt.Printf("Found dangling service: %s/%s\n", danglingSvc.namespace, danglingSvc.serviceID)
+			logrus.Infof("Found dangling service: %s/%s\n", danglingSvc.namespace, danglingSvc.serviceID)
 			// Delete the service
 			if _, err := nomadClient.Services().Delete(danglingSvc.serviceName, danglingSvc.serviceID, &nomadApi.WriteOptions{
 				Namespace: danglingSvc.namespace,

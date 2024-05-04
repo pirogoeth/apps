@@ -4,17 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/gin-gonic/gin"
 	"github.com/google/go-github/v58/github"
 	"github.com/gregjones/httpcache"
 	nomadApi "github.com/hashicorp/nomad/api"
-	"github.com/sirupsen/logrus"
 
 	"github.com/pirogoeth/apps/nomad-deployer/api"
 	"github.com/pirogoeth/apps/nomad-deployer/types"
 	"github.com/pirogoeth/apps/pkg/config"
 	"github.com/pirogoeth/apps/pkg/logging"
-	"github.com/pirogoeth/apps/pkg/middlewares"
 	"github.com/pirogoeth/apps/pkg/system"
 )
 
@@ -55,14 +52,7 @@ func main() {
 	system.RegisterNomadClientReadiness(nomadClient)
 	defer nomadClient.Close()
 
-	router := gin.New()
-	router.Use(gin.LoggerWithConfig(gin.LoggerConfig{
-		Output:    logrus.StandardLogger().Writer(),
-		Formatter: logging.GinJsonLogFormatter,
-	}))
-	router.Use(gin.Recovery())
-	router.Use(middlewares.PrettifyResponseJSON)
-
+	router := system.DefaultRouter()
 	api.MustRegister(router, &types.ApiContext{
 		Config: app.cfg,
 		Github: ghClient,
