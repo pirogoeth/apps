@@ -10,14 +10,14 @@ import (
 
 type Host struct {
 	ID         int64          `json:"id"`
-	NetworkID  sql.NullInt64  `json:"network_id"`
-	Address    []byte         `json:"address"`
+	NetworkID  int64          `json:"network_id"`
+	Address    string         `json:"address"`
 	Comments   sql.NullString `json:"comments"`
 	Attributes sql.NullString `json:"attributes"`
 }
 
 type HostPort struct {
-	Address    []byte         `json:"address"`
+	Address    string         `json:"address"`
 	Port       int64          `json:"port"`
 	Protocol   string         `json:"protocol"`
 	Comments   sql.NullString `json:"comments"`
@@ -25,10 +25,10 @@ type HostPort struct {
 }
 
 type Network struct {
-	ID         int64          `json:"id"`
-	Name       interface{}    `json:"name"`
-	Address    interface{}    `json:"address"`
-	Cidr       int64          `json:"cidr"`
-	Comments   sql.NullString `json:"comments"`
-	Attributes sql.NullString `json:"attributes"`
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	Address    string `json:"address"`
+	Cidr       int64  `json:"cidr"`
+	Comments   string `json:"comments"`
+	Attributes string `json:"attributes"`
 }
