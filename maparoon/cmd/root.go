@@ -15,7 +15,7 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(serveCmd, workerCmd)
+	rootCmd.AddCommand(clientCmd, serveCmd, workerCmd)
 }
 
 func appStart() *types.Config {

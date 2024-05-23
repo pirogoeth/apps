@@ -10,6 +10,76 @@ import (
 	"database/sql"
 )
 
+const createHost = `-- name: CreateHost :one
+insert into hosts (
+    network_id, address, comments, attributes
+) values (
+    ?, ?, ?, ?
+)
+returning id, network_id, address, comments, attributes
+`
+
+type CreateHostParams struct {
+	NetworkID  int64  `json:"network_id"`
+	Address    string `json:"address"`
+	Comments   string `json:"comments"`
+	Attributes string `json:"attributes"`
+}
+
+func (q *Queries) CreateHost(ctx context.Context, arg CreateHostParams) (Host, error) {
+	row := q.db.QueryRowContext(ctx, createHost,
+		arg.NetworkID,
+		arg.Address,
+		arg.Comments,
+		arg.Attributes,
+	)
+	var i Host
+	err := row.Scan(
+		&i.ID,
+		&i.NetworkID,
+		&i.Address,
+		&i.Comments,
+		&i.Attributes,
+	)
+	return i, err
+}
+
+const createHostPort = `-- name: CreateHostPort :one
+insert into host_ports (
+    address, port, protocol, comments, attributes
+) values (
+    ?, ?, ?, ?, ?
+)
+returning address, port, protocol, comments, attributes
+`
+
+type CreateHostPortParams struct {
+	Address    string `json:"address"`
+	Port       int64  `json:"port"`
+	Protocol   string `json:"protocol"`
+	Comments   string `json:"comments"`
+	Attributes string `json:"attributes"`
+}
+
+func (q *Queries) CreateHostPort(ctx context.Context, arg CreateHostPortParams) (HostPort, error) {
+	row := q.db.QueryRowContext(ctx, createHostPort,
+		arg.Address,
+		arg.Port,
+		arg.Protocol,
+		arg.Comments,
+		arg.Attributes,
+	)
+	var i HostPort
+	err := row.Scan(
+		&i.Address,
+		&i.Port,
+		&i.Protocol,
+		&i.Comments,
+		&i.Attributes,
+	)
+	return i, err
+}
+
 const createNetwork = `-- name: CreateNetwork :one
 insert into networks (
     name, address, cidr, comments, attributes
@@ -47,13 +117,123 @@ func (q *Queries) CreateNetwork(ctx context.Context, arg CreateNetworkParams) (N
 	return i, err
 }
 
+const deleteHost = `-- name: DeleteHost :exec
+delete from hosts
+where id = ?
+`
+
+func (q *Queries) DeleteHost(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, deleteHost, id)
+	return err
+}
+
+const deleteHostPort = `-- name: DeleteHostPort :exec
+delete from host_ports
+where
+    address = ?
+    and port = ?
+    and protocol = ?
+`
+
+type DeleteHostPortParams struct {
+	Address  string `json:"address"`
+	Port     int64  `json:"port"`
+	Protocol string `json:"protocol"`
+}
+
+func (q *Queries) DeleteHostPort(ctx context.Context, arg DeleteHostPortParams) error {
+	_, err := q.db.ExecContext(ctx, deleteHostPort, arg.Address, arg.Port, arg.Protocol)
+	return err
+}
+
 const deleteNetwork = `-- name: DeleteNetwork :exec
-delete from networks where id=?
+delete from networks where id = ?
 `
 
 func (q *Queries) DeleteNetwork(ctx context.Context, id int64) error {
 	_, err := q.db.ExecContext(ctx, deleteNetwork, id)
 	return err
+}
+
+const getHostByAddress = `-- name: GetHostByAddress :one
+select id, network_id, address, comments, attributes from hosts
+where address = ? limit 1
+`
+
+func (q *Queries) GetHostByAddress(ctx context.Context, address string) (Host, error) {
+	row := q.db.QueryRowContext(ctx, getHostByAddress, address)
+	var i Host
+	err := row.Scan(
+		&i.ID,
+		&i.NetworkID,
+		&i.Address,
+		&i.Comments,
+		&i.Attributes,
+	)
+	return i, err
+}
+
+const getHostById = `-- name: GetHostById :one
+select id, network_id, address, comments, attributes from hosts
+where id = ? limit 1
+`
+
+func (q *Queries) GetHostById(ctx context.Context, id int64) (Host, error) {
+	row := q.db.QueryRowContext(ctx, getHostById, id)
+	var i Host
+	err := row.Scan(
+		&i.ID,
+		&i.NetworkID,
+		&i.Address,
+		&i.Comments,
+		&i.Attributes,
+	)
+	return i, err
+}
+
+const getHostPort = `-- name: GetHostPort :many
+select address, port, protocol, comments, attributes from host_ports
+where address = ?
+    and port = ?
+    and (
+        protocol = ?3
+        OR ?3 IS NULL
+    )
+`
+
+type GetHostPortParams struct {
+	Address  string         `json:"address"`
+	Port     int64          `json:"port"`
+	Protocol sql.NullString `json:"protocol"`
+}
+
+func (q *Queries) GetHostPort(ctx context.Context, arg GetHostPortParams) ([]HostPort, error) {
+	rows, err := q.db.QueryContext(ctx, getHostPort, arg.Address, arg.Port, arg.Protocol)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []HostPort
+	for rows.Next() {
+		var i HostPort
+		if err := rows.Scan(
+			&i.Address,
+			&i.Port,
+			&i.Protocol,
+			&i.Comments,
+			&i.Attributes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getHostWithPortsById = `-- name: GetHostWithPortsById :many
@@ -71,10 +251,10 @@ select
     hp.attributes as port_attributes
 from hosts h
 left join host_ports hp
-on hp.address=h.address
+on hp.address = h.address
 left join networks net
-on net.id=h.network_id
-where h.id=?
+on net.id = h.network_id
+where h.id = ?
 `
 
 type GetHostWithPortsByIdRow struct {
@@ -82,8 +262,8 @@ type GetHostWithPortsByIdRow struct {
 	NetworkName     sql.NullString `json:"network_name"`
 	NetworkAddress  sql.NullString `json:"network_address"`
 	NetworkCidrSize sql.NullInt64  `json:"network_cidr_size"`
-	HostComments    sql.NullString `json:"host_comments"`
-	HostAttributes  sql.NullString `json:"host_attributes"`
+	HostComments    string         `json:"host_comments"`
+	HostAttributes  string         `json:"host_attributes"`
 	HostAddress     string         `json:"host_address"`
 	PortNumber      sql.NullInt64  `json:"port_number"`
 	PortProtocol    sql.NullString `json:"port_protocol"`
@@ -128,7 +308,7 @@ func (q *Queries) GetHostWithPortsById(ctx context.Context, id int64) ([]GetHost
 
 const getNetworkByAddress = `-- name: GetNetworkByAddress :one
 select id, name, address, cidr, comments, attributes from networks
-where address=? limit 1
+where address = ? limit 1
 `
 
 func (q *Queries) GetNetworkByAddress(ctx context.Context, address string) (Network, error) {
@@ -147,7 +327,7 @@ func (q *Queries) GetNetworkByAddress(ctx context.Context, address string) (Netw
 
 const getNetworkById = `-- name: GetNetworkById :one
 select id, name, address, cidr, comments, attributes from networks
-where id=? limit 1
+where id = ? limit 1
 `
 
 func (q *Queries) GetNetworkById(ctx context.Context, id int64) (Network, error) {
@@ -170,6 +350,40 @@ select address, port, protocol, comments, attributes from host_ports
 
 func (q *Queries) ListHostPorts(ctx context.Context) ([]HostPort, error) {
 	rows, err := q.db.QueryContext(ctx, listHostPorts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []HostPort
+	for rows.Next() {
+		var i HostPort
+		if err := rows.Scan(
+			&i.Address,
+			&i.Port,
+			&i.Protocol,
+			&i.Comments,
+			&i.Attributes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listHostPortsByHostAddress = `-- name: ListHostPortsByHostAddress :many
+select address, port, protocol, comments, attributes from host_ports
+where address = ?
+`
+
+func (q *Queries) ListHostPortsByHostAddress(ctx context.Context, address string) ([]HostPort, error) {
+	rows, err := q.db.QueryContext(ctx, listHostPortsByHostAddress, address)
 	if err != nil {
 		return nil, err
 	}
@@ -262,6 +476,73 @@ func (q *Queries) ListNetworks(ctx context.Context) ([]Network, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateHost = `-- name: UpdateHost :one
+update hosts
+set
+    comments = ?,
+    attributes = ?
+where id = ?
+returning id, network_id, address, comments, attributes
+`
+
+type UpdateHostParams struct {
+	Comments   string `json:"comments"`
+	Attributes string `json:"attributes"`
+	ID         int64  `json:"id"`
+}
+
+func (q *Queries) UpdateHost(ctx context.Context, arg UpdateHostParams) (Host, error) {
+	row := q.db.QueryRowContext(ctx, updateHost, arg.Comments, arg.Attributes, arg.ID)
+	var i Host
+	err := row.Scan(
+		&i.ID,
+		&i.NetworkID,
+		&i.Address,
+		&i.Comments,
+		&i.Attributes,
+	)
+	return i, err
+}
+
+const updateHostPort = `-- name: UpdateHostPort :one
+update host_ports
+set
+    comments = ?,
+    attributes = ?
+where
+    address = ?
+    and port = ?
+    and protocol = ?
+returning address, port, protocol, comments, attributes
+`
+
+type UpdateHostPortParams struct {
+	Comments   string `json:"comments"`
+	Attributes string `json:"attributes"`
+	Address    string `json:"address"`
+	Port       int64  `json:"port"`
+	Protocol   string `json:"protocol"`
+}
+
+func (q *Queries) UpdateHostPort(ctx context.Context, arg UpdateHostPortParams) (HostPort, error) {
+	row := q.db.QueryRowContext(ctx, updateHostPort,
+		arg.Comments,
+		arg.Attributes,
+		arg.Address,
+		arg.Port,
+		arg.Protocol,
+	)
+	var i HostPort
+	err := row.Scan(
+		&i.Address,
+		&i.Port,
+		&i.Protocol,
+		&i.Comments,
+		&i.Attributes,
+	)
+	return i, err
 }
 
 const updateNetwork = `-- name: UpdateNetwork :one

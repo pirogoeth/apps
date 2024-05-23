@@ -1,13 +1,13 @@
 -- name: GetNetworkById :one
 select * from networks
-where id=? limit 1;
+where id = ? limit 1;
 
 -- name: GetNetworkByAddress :one
 select * from networks
-where address=? limit 1;
+where address = ? limit 1;
 
 -- name: DeleteNetwork :exec
-delete from networks where id=?;
+delete from networks where id = ?;
 
 -- name: CreateNetwork :one
 insert into networks (
@@ -32,8 +32,75 @@ select * from networks;
 -- name: ListHosts :many
 select * from hosts;
 
+-- name: GetHostById :one
+select * from hosts
+where id = ? limit 1;
+
+-- name: GetHostByAddress :one
+select * from hosts
+where address = ? limit 1;
+
+-- name: CreateHost :one
+insert into hosts (
+    network_id, address, comments, attributes
+) values (
+    ?, ?, ?, ?
+)
+returning *;
+
+-- name: UpdateHost :one
+update hosts
+set
+    comments = ?,
+    attributes = ?
+where id = ?
+returning *;
+
+-- name: DeleteHost :exec
+delete from hosts
+where id = ?;
+
 -- name: ListHostPorts :many
 select * from host_ports;
+
+-- name: ListHostPortsByHostAddress :many
+select * from host_ports
+where address = ?;
+
+-- name: CreateHostPort :one
+insert into host_ports (
+    address, port, protocol, comments, attributes
+) values (
+    ?, ?, ?, ?, ?
+)
+returning *;
+
+-- name: GetHostPort :many
+select * from host_ports
+where address = ?
+    and port = ?
+    and (
+        protocol = sqlc.narg('protocol')
+        OR sqlc.narg('protocol') IS NULL
+    );
+
+-- name: UpdateHostPort :one
+update host_ports
+set
+    comments = ?,
+    attributes = ?
+where
+    address = ?
+    and port = ?
+    and protocol = ?
+returning *;
+
+-- name: DeleteHostPort :exec
+delete from host_ports
+where
+    address = ?
+    and port = ?
+    and protocol = ?;
 
 -- name: GetHostWithPortsById :many
 select
@@ -50,7 +117,7 @@ select
     hp.attributes as port_attributes
 from hosts h
 left join host_ports hp
-on hp.address=h.address
+on hp.address = h.address
 left join networks net
-on net.id=h.network_id
-where h.id=?;
+on net.id = h.network_id
+where h.id = ?;

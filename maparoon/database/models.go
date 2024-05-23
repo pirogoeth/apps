@@ -4,24 +4,22 @@
 
 package database
 
-import (
-	"database/sql"
-)
+import ()
 
 type Host struct {
-	ID         int64          `json:"id"`
-	NetworkID  int64          `json:"network_id"`
-	Address    string         `json:"address"`
-	Comments   sql.NullString `json:"comments"`
-	Attributes sql.NullString `json:"attributes"`
+	ID         int64  `json:"id"`
+	NetworkID  int64  `json:"network_id"`
+	Address    string `json:"address"`
+	Comments   string `json:"comments"`
+	Attributes string `json:"attributes"`
 }
 
 type HostPort struct {
-	Address    string         `json:"address"`
-	Port       int64          `json:"port"`
-	Protocol   string         `json:"protocol"`
-	Comments   sql.NullString `json:"comments"`
-	Attributes sql.NullString `json:"attributes"`
+	Address    string `json:"address"`
+	Port       int64  `json:"port"`
+	Protocol   string `json:"protocol"`
+	Comments   string `json:"comments"`
+	Attributes string `json:"attributes"`
 }
 
 type Network struct {
@@ -31,4 +29,13 @@ type Network struct {
 	Cidr       int64  `json:"cidr"`
 	Comments   string `json:"comments"`
 	Attributes string `json:"attributes"`
+}
+
+type NetworkScan struct {
+	ID         int64 `json:"id"`
+	NetworkID  int64 `json:"network_id"`
+	StartedAt  int64 `json:"started_at"`
+	FinishedAt int64 `json:"finished_at"`
+	HostsFound int64 `json:"hosts_found"`
+	PortsFound int64 `json:"ports_found"`
 }

@@ -36,6 +36,10 @@ func (v1n *v1NetworkEndpoints) listNetworks(ctx *gin.Context) {
 		return
 	}
 
+	if networks == nil {
+		networks = []database.Network{}
+	}
+
 	ctx.JSON(http.StatusOK, &gin.H{
 		"networks": networks,
 	})
