@@ -17,15 +17,15 @@ type v1HostPortEndpoints struct {
 }
 
 func (v1hp *v1HostPortEndpoints) RegisterRoutesTo(router *gin.RouterGroup) {
-	router.GET("/host/:host_id/ports", v1hp.listHostPorts)
-	router.GET("/host/:host_id/port", v1hp.getHostPort)
-	router.POST("/host/:host_id/ports", v1hp.createHostPort)
-	router.PUT("/host/:host_id/ports/:number/:protocol", v1hp.updateHostPort)
-	router.DELETE("/host/:host_id/ports/:number/:protocol", v1hp.deleteHostPort)
+	router.GET("/host/:host_address/ports", v1hp.listHostPorts)
+	router.GET("/host/:host_address/port", v1hp.getHostPort)
+	router.POST("/host/:host_address/ports", v1hp.createHostPort)
+	router.PUT("/host/:host_address/ports/:number/:protocol", v1hp.updateHostPort)
+	router.DELETE("/host/:host_address/ports/:number/:protocol", v1hp.deleteHostPort)
 }
 
 func (v1hp *v1HostPortEndpoints) listHostPorts(ctx *gin.Context) {
-	host, ok := extractHostFromPathParam(ctx, v1hp.ApiContext, "host_id")
+	host, ok := extractHostFromPathParam(ctx, v1hp.ApiContext, "host_address")
 	if !ok {
 		return
 	}
@@ -47,7 +47,7 @@ func (v1hp *v1HostPortEndpoints) listHostPorts(ctx *gin.Context) {
 }
 
 func (v1hp *v1HostPortEndpoints) getHostPort(ctx *gin.Context) {
-	host, ok := extractHostFromPathParam(ctx, v1hp.ApiContext, "host_id")
+	host, ok := extractHostFromPathParam(ctx, v1hp.ApiContext, "host_address")
 	if !ok {
 		return
 	}
@@ -100,7 +100,7 @@ func (v1hp *v1HostPortEndpoints) createHostPort(ctx *gin.Context) {
 		return
 	}
 
-	host, ok := extractHostFromPathParam(ctx, v1hp.ApiContext, "host_id")
+	host, ok := extractHostFromPathParam(ctx, v1hp.ApiContext, "host_address")
 	if !ok {
 		return
 	}
@@ -130,8 +130,8 @@ func (v1hp *v1HostPortEndpoints) createHostPort(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, &gin.H{
-		"message":   "Successfully created host port",
-		"host_port": hostPort,
+		"message":    "Successfully created host port",
+		"host_ports": []database.HostPort{hostPort},
 	})
 }
 
@@ -140,7 +140,7 @@ func (v1hp *v1HostPortEndpoints) updateHostPort(ctx *gin.Context) {
 		return
 	}
 
-	host, ok := extractHostFromPathParam(ctx, v1hp.ApiContext, "host_id")
+	host, ok := extractHostFromPathParam(ctx, v1hp.ApiContext, "host_address")
 	if !ok {
 		return
 	}
@@ -214,7 +214,7 @@ func (v1hp *v1HostPortEndpoints) updateHostPort(ctx *gin.Context) {
 }
 
 func (v1hp *v1HostPortEndpoints) deleteHostPort(ctx *gin.Context) {
-	host, ok := extractHostFromPathParam(ctx, v1hp.ApiContext, "host_id")
+	host, ok := extractHostFromPathParam(ctx, v1hp.ApiContext, "host_address")
 	if !ok {
 		return
 	}

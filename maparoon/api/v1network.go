@@ -1,6 +1,8 @@
 package api
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -121,6 +123,23 @@ func (v1n *v1NetworkEndpoints) createNetwork(ctx *gin.Context) {
 			"message": ErrFailedToBind,
 			"error":   err.Error(),
 		})
+		return
+	}
+
+	_, err := v1n.Querier.GetNetworkByAddress(ctx, networkParams.Address)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		logrus.Errorf("failed to check if network exists: %s", err)
+		ctx.AbortWithStatusJSON(http.StatusInternalServerError, &gin.H{
+			"message": ErrDatabaseLookup,
+			"error":   err.Error(),
+		})
+
+		return
+	} else if err == nil {
+		ctx.AbortWithStatusJSON(http.StatusConflict, &gin.H{
+			"message": fmt.Sprintf("network already exists with address: %s", networkParams.Address),
+		})
+
 		return
 	}
 

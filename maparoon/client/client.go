@@ -3,10 +3,18 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net/http"
 
 	"github.com/imroc/req/v3"
 	"github.com/pirogoeth/apps/maparoon/database"
 	"github.com/sirupsen/logrus"
+)
+
+var (
+	ErrAlreadyExists = errors.New("resource already exists")
+	ErrNotFound      = errors.New("resource not found")
+	ErrInternal      = errors.New("upstream internal server error")
 )
 
 type Options struct {
@@ -32,6 +40,11 @@ type NetworksResponse struct {
 type HostsResponse struct {
 	commonResponse
 	Hosts []database.Host `json:"hosts,omitempty"`
+}
+
+type HostPortsResponse struct {
+	commonResponse
+	HostPorts []database.HostPort `json:"host_ports,omitempty"`
 }
 
 func NewClient(opts *Options) *Client {
@@ -78,7 +91,40 @@ func (c *Client) CreateHost(ctx context.Context, hostParams *database.CreateHost
 		return nil, err
 	}
 
+	switch resp.StatusCode {
+	case http.StatusConflict:
+		return nil, ErrAlreadyExists
+	case http.StatusInternalServerError:
+		return nil, ErrInternal
+	}
+
 	ret := &HostsResponse{}
+	if err := json.Unmarshal(resp.Bytes(), ret); err != nil {
+		logrus.Errorf("could not unmarshal response: %s", err)
+		return nil, err
+	}
+
+	return ret, nil
+}
+
+func (c *Client) CreateHostPort(ctx context.Context, hostPortParams *database.CreateHostPortParams) (*HostPortsResponse, error) {
+	resp, err := c.httpClient.R().
+		SetContext(ctx).
+		SetBodyJsonMarshal(hostPortParams).
+		SetPathParam("host_address", hostPortParams.Address).
+		Post("/v1/host/{host_address}/ports")
+	if err != nil {
+		return nil, err
+	}
+
+	switch resp.StatusCode {
+	case http.StatusConflict:
+		return nil, ErrAlreadyExists
+	case http.StatusInternalServerError:
+		return nil, ErrInternal
+	}
+
+	ret := &HostPortsResponse{}
 	if err := json.Unmarshal(resp.Bytes(), ret); err != nil {
 		logrus.Errorf("could not unmarshal response: %s", err)
 		return nil, err

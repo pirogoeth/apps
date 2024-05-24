@@ -3,7 +3,6 @@ package api
 import (
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
@@ -50,8 +49,8 @@ func assertContentTypeJson(ctx *gin.Context) bool {
 }
 
 func extractHostFromPathParam(ctx *gin.Context, endpointCtx *types.ApiContext, paramName string) (*database.Host, bool) {
-	hostIdStr := ctx.Param(paramName)
-	if hostIdStr == "" {
+	hostAddress := ctx.Param(paramName)
+	if hostAddress == "" {
 		logrus.Debugf("blank `%s` parameter provided", paramName)
 		ctx.AbortWithStatusJSON(http.StatusBadRequest, &gin.H{
 			"message": fmt.Sprintf("%s: %s", ErrInvalidParameter, paramName),
@@ -59,19 +58,9 @@ func extractHostFromPathParam(ctx *gin.Context, endpointCtx *types.ApiContext, p
 		return nil, false
 	}
 
-	hostId, err := strconv.ParseInt(hostIdStr, 10, 0)
+	host, err := endpointCtx.Querier.GetHost(ctx, hostAddress)
 	if err != nil {
-		logrus.Debugf("invalid `%s` parameter provided", paramName)
-		ctx.AbortWithStatusJSON(http.StatusBadRequest, &gin.H{
-			"message": fmt.Sprintf("%s: %s", ErrInvalidParameter, paramName),
-			"error":   err.Error(),
-		})
-		return nil, false
-	}
-
-	host, err := endpointCtx.Querier.GetHostById(ctx, hostId)
-	if err != nil {
-		logrus.Errorf("error fetching host from database (by id): %s", err)
+		logrus.Errorf("error fetching host from database (by address): %s", err)
 		ctx.AbortWithStatusJSON(http.StatusInternalServerError, &gin.H{
 			"message": ErrDatabaseLookup,
 			"error":   err.Error(),

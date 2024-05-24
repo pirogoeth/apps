@@ -6,15 +6,16 @@ create table if not exists networks (
     address text not null,
     cidr integer not null,
     comments text not null,
-    attributes text not null
+    attributes text not null,
+
+    unique (address, cidr)
 );
 create index if not exists idx_networks_address on networks(address);
 create index if not exists idx_networks_address_cidr on networks(address, cidr);
 
 create table if not exists hosts (
-    id integer primary key,
+    address text primary key,
     network_id integer not null,
-    address text unique not null,
     comments text not null,
     attributes text not null,
 

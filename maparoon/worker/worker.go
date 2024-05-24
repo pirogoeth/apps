@@ -2,6 +2,8 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -52,13 +54,19 @@ func (w *worker) doScan(ctx context.Context) error {
 		return err
 	}
 
+	logrus.Debugf("Found %d networks, only scanning %d concurrently",
+		len(networks.Networks),
+		w.cfg.Worker.ConcurrentScanLimit,
+	)
+
 	lg := goro.NewLimitGroup(w.cfg.Worker.ConcurrentScanLimit)
 	for _, network := range networks.Networks {
-		// Pop off a goroutine to scan each network, bounded by the worker's concurrent scan limit
 		lg.Add(func(ctx context.Context) error {
 			return w.doNetworkScan(ctx, network)
 		})
 	}
+
+	// logrus.Debugf("Launching network scanners")
 
 	if err = lg.Run(ctx); err != nil {
 		return err
@@ -71,12 +79,16 @@ func (w *worker) doNetworkScan(ctx context.Context, network database.Network) er
 	logrus.Debugf("Scanning network %s", network.Name)
 
 	options := naabuRunner.Options{
-		Host:       goflags.StringSlice{fmt.Sprintf("%s/%d", network.Address, network.Cidr)},
-		ScanType:   "",
-		Silent:     true,
-		Ping:       true,
-		ReversePTR: true,
-		Output:     "/dev/null",
+		Host:             goflags.StringSlice{fmt.Sprintf("%s/%d", network.Address, network.Cidr)},
+		ScanType:         "sc",
+		Silent:           true,
+		Ping:             true,
+		ReversePTR:       true,
+		JSON:             true,
+		Stream:           true,
+		ServiceDiscovery: true,
+		Nmap:             true,
+		Output:           "/dev/null",
 		OnResult: func(res *naabuResult.HostResult) {
 			logrus.Debugf("Found host %s", res.IP)
 			if err := w.receiveHostResult(ctx, network, res); err != nil {
@@ -94,6 +106,53 @@ func (w *worker) doNetworkScan(ctx context.Context, network database.Network) er
 	return runner.RunEnumeration(ctx)
 }
 
-func (w *worker) receiveHostResult(ctx context.Context, network database.Network, host *naabuResult.HostResult) error {
+func (w *worker) receiveHostResult(ctx context.Context, network database.Network, scanResult *naabuResult.HostResult) error {
+	var hostAddress string
+
+	resp, err := w.apiClient.CreateHost(ctx, &database.CreateHostParams{
+		Address:   scanResult.IP,
+		NetworkID: network.ID,
+		Comments:  "",
+		Attributes: mustJsonify(attributes{
+			"hostname": scanResult.Host,
+		}),
+	})
+	if err != nil {
+		if !errors.Is(err, client.ErrAlreadyExists) {
+			return err
+		}
+
+		hostAddress = scanResult.IP
+	} else {
+		logrus.Debugf("Created host %#v", resp.Hosts[0])
+		hostAddress = resp.Hosts[0].Address
+	}
+
+	for _, port := range scanResult.Ports {
+		resp, err := w.apiClient.CreateHostPort(ctx, &database.CreateHostPortParams{
+			Address:    hostAddress,
+			Port:       int64(port.Port),
+			Protocol:   port.Protocol.String(),
+			Attributes: `{}`,
+		})
+		if err != nil {
+			if !errors.Is(err, client.ErrAlreadyExists) {
+				return err
+			}
+		} else {
+			logrus.Debugf("Created hostport %#v", resp.HostPorts[0])
+		}
+	}
+
 	return nil
+}
+
+type attributes map[string]string
+
+func mustJsonify(attrs attributes) string {
+	b, err := json.Marshal(attrs)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
 }

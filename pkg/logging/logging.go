@@ -20,6 +20,10 @@ func Setup() {
 	logrus.SetLevel(logLevel)
 	logrus.SetOutput(os.Stdout)
 	logrus.SetFormatter(&logrus.JSONFormatter{})
+
+	if logLevel == logrus.DebugLevel {
+		logrus.Debugf("Debug logging enabled~")
+	}
 }
 
 func GinDefaultColorlessFormatter(param gin.LogFormatterParams) string {

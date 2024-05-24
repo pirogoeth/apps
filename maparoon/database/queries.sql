@@ -32,11 +32,7 @@ select * from networks;
 -- name: ListHosts :many
 select * from hosts;
 
--- name: GetHostById :one
-select * from hosts
-where id = ? limit 1;
-
--- name: GetHostByAddress :one
+-- name: GetHost :one
 select * from hosts
 where address = ? limit 1;
 
@@ -53,12 +49,12 @@ update hosts
 set
     comments = ?,
     attributes = ?
-where id = ?
+where address = ?
 returning *;
 
 -- name: DeleteHost :exec
 delete from hosts
-where id = ?;
+where address = ?;
 
 -- name: ListHostPorts :many
 select * from host_ports;
@@ -102,9 +98,8 @@ where
     and port = ?
     and protocol = ?;
 
--- name: GetHostWithPortsById :many
+-- name: GetHostWithPortsByAddress :many
 select
-    h.id as host_id,
     net.name as network_name,
     net.address as network_address,
     net.cidr as network_cidr_size,
@@ -120,4 +115,4 @@ left join host_ports hp
 on hp.address = h.address
 left join networks net
 on net.id = h.network_id
-where h.id = ?;
+where h.address = ?;

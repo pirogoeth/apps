@@ -15,14 +15,15 @@ var (
 	clientCmd = &cobra.Command{
 		Use:   "client",
 		Short: "Interact with the maparoon API",
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			logging.Setup()
+		},
 	}
 	clientBaseUrl string
 	clientDevMode bool
 )
 
 func init() {
-	logging.Setup()
-
 	clientCmd.PersistentFlags().StringVarP(
 		&clientBaseUrl,
 		"baseurl", "b", "http://localhost:8000",

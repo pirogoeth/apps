@@ -7,9 +7,8 @@ package database
 import ()
 
 type Host struct {
-	ID         int64  `json:"id"`
-	NetworkID  int64  `json:"network_id"`
 	Address    string `json:"address"`
+	NetworkID  int64  `json:"network_id"`
 	Comments   string `json:"comments"`
 	Attributes string `json:"attributes"`
 }

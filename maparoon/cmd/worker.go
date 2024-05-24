@@ -22,6 +22,7 @@ func workerFunc(cmd *cobra.Command, args []string) {
 	cfg := appStart()
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	apiClient := client.NewClient(&client.Options{
 		BaseURL:     cfg.Worker.BaseURL,

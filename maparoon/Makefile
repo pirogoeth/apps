@@ -6,6 +6,20 @@ maparoon: **/*.go $(sqlc_generated)
 $(sqlc_generated): sqlc.yml database/queries.sql database/schema.sql
 	sqlc generate
 
-.PHONY: run-debug
-run-debug: maparoon
+.PHONY: run-debug-api
+run-debug-api: maparoon
 	LOG_LEVEL=DEBUG DATABASE_PATH=./maparoon.db ./maparoon serve
+
+.PHONY: run-debug-worker
+run-debug-worker: maparoon
+	LOG_LEVEL=DEBUG ./maparoon worker
+
+.PHONY: sudo-run-debug-worker
+sudo-run-debug-worker: maparoon
+	LOG_LEVEL=DEBUG sudo -E ./maparoon worker
+
+.PHONY: clean
+clean:
+	rm -f maparoon
+	rm -f $(sqlc_generated)
+	rm -f maparoon.db

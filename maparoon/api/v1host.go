@@ -1,9 +1,10 @@
 package api
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pirogoeth/apps/maparoon/database"
@@ -19,8 +20,8 @@ func (v1h *v1HostEndpoints) RegisterRoutesTo(router *gin.RouterGroup) {
 	router.GET("/hosts", v1h.listHosts)
 	router.GET("/host", v1h.getHost)
 	router.POST("/hosts", v1h.createHost)
-	router.PUT("/hosts/:id", v1h.updateHost)
-	router.DELETE("/hosts/:id", v1h.deleteHost)
+	router.PUT("/hosts/:address", v1h.updateHost)
+	router.DELETE("/hosts/:address", v1h.deleteHost)
 }
 
 func (v1h *v1HostEndpoints) listHosts(ctx *gin.Context) {
@@ -44,46 +45,25 @@ func (v1h *v1HostEndpoints) listHosts(ctx *gin.Context) {
 }
 
 func (v1h *v1HostEndpoints) getHost(ctx *gin.Context) {
-	var host database.Host
-	if hostIdStr := ctx.Query("id"); hostIdStr != "" {
-		hostId, err := strconv.ParseInt(hostIdStr, 10, 0)
-		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, &gin.H{
-				"message": fmt.Sprintf("%s: %s", ErrInvalidParameter, "id"),
-				"error":   err.Error(),
+	address := ctx.Query("address")
+	host, err := v1h.Querier.GetHost(ctx, address)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			ctx.AbortWithStatusJSON(http.StatusNotFound, &gin.H{
+				"message": fmt.Sprintf("host not found with address: %s", address),
 			})
 			return
 		}
 
-		host, err = v1h.Querier.GetHostById(ctx, hostId)
-		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, &gin.H{
-				"message": ErrDatabaseLookup,
-				"error":   err.Error(),
-			})
-			return
-		}
-		ctx.JSON(http.StatusOK, &gin.H{
-			"hosts": []database.Host{host},
-		})
-		return
-	} else if address := ctx.Query("address"); address != "" {
-		host, err := v1h.Querier.GetHostByAddress(ctx, address)
-		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, &gin.H{
-				"message": ErrDatabaseLookup,
-				"error":   err.Error(),
-			})
-			return
-		}
-		ctx.JSON(http.StatusOK, &gin.H{
-			"hosts": []database.Host{host},
+		ctx.AbortWithStatusJSON(http.StatusInternalServerError, &gin.H{
+			"message": ErrDatabaseLookup,
+			"error":   err.Error(),
 		})
 		return
 	}
 
-	ctx.JSON(http.StatusBadRequest, &gin.H{
-		"message": ErrNoQueryProvided,
+	ctx.JSON(http.StatusOK, &gin.H{
+		"hosts": []database.Host{host},
 	})
 }
 
@@ -102,6 +82,23 @@ func (v1h *v1HostEndpoints) createHost(ctx *gin.Context) {
 			"message": ErrFailedToBind,
 			"error":   err.Error(),
 		})
+		return
+	}
+
+	_, err := v1h.Querier.GetHost(ctx, hostParams.Address)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		logrus.Errorf("failed to check if host exists: %s", err)
+		ctx.AbortWithStatusJSON(http.StatusInternalServerError, &gin.H{
+			"message": ErrDatabaseLookup,
+			"error":   err.Error(),
+		})
+
+		return
+	} else if err == nil {
+		ctx.AbortWithStatusJSON(http.StatusConflict, &gin.H{
+			"message": fmt.Sprintf("host already exists with address: %s", hostParams.Address),
+		})
+
 		return
 	}
 
@@ -126,13 +123,13 @@ func (v1h *v1HostEndpoints) updateHost(ctx *gin.Context) {
 		return
 	}
 
-	host, ok := extractHostFromPathParam(ctx, v1h.ApiContext, "id")
+	host, ok := extractHostFromPathParam(ctx, v1h.ApiContext, "address")
 	if !ok {
 		return
 	}
 
 	hostUpdate := database.UpdateHostParams{
-		ID:         host.ID,
+		Address:    host.Address,
 		Comments:   host.Comments,
 		Attributes: host.Attributes,
 	}
@@ -162,12 +159,12 @@ func (v1h *v1HostEndpoints) updateHost(ctx *gin.Context) {
 }
 
 func (v1h *v1HostEndpoints) deleteHost(ctx *gin.Context) {
-	host, ok := extractHostFromPathParam(ctx, v1h.ApiContext, "id")
+	host, ok := extractHostFromPathParam(ctx, v1h.ApiContext, "address")
 	if !ok {
 		return
 	}
 
-	err := v1h.Querier.DeleteHost(ctx, host.ID)
+	err := v1h.Querier.DeleteHost(ctx, host.Address)
 	if err != nil {
 		logrus.Errorf("failed to delete host: %s", err)
 		ctx.AbortWithStatusJSON(http.StatusInternalServerError, &gin.H{
