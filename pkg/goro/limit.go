@@ -7,14 +7,14 @@ import (
 )
 
 type LimitGroup struct {
-	sema chan struct{}
+	sema *SlottedSemaphore
 	fns  []errWrapper
 	lock sync.Mutex
 }
 
 func NewLimitGroup(limit int) *LimitGroup {
 	return &LimitGroup{
-		sema: make(chan struct{}, limit),
+		sema: NewSlottedSemaphore(limit),
 		fns:  make([]errWrapper, 0),
 		lock: sync.Mutex{},
 	}
@@ -24,9 +24,9 @@ func (lg *LimitGroup) Add(fn errWrapper) error {
 	if ok := lg.lock.TryLock(); !ok {
 		return errors.New("cannot add to a LimitGroup while running")
 	}
-	defer lg.lock.Unlock()
 
 	lg.fns = append(lg.fns, fn)
+	lg.lock.Unlock()
 
 	return nil
 }
@@ -39,12 +39,11 @@ func (lg *LimitGroup) Run(parentCtx context.Context) error {
 	wg := sync.WaitGroup{}
 
 	for _, fn := range lg.fns {
-		lg.sema <- struct{}{}
 		wg.Add(1)
 		go func(fn errWrapper) {
-			defer func() {
-				<-lg.sema
-			}()
+			slot := lg.sema.AcquireBlocking()
+			defer slot.Release()
+
 			errCh <- fn(ctx)
 			wg.Done()
 		}(fn)

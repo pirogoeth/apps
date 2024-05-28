@@ -2,10 +2,15 @@ package goro
 
 import (
 	"context"
+	"crypto/rand"
+	"fmt"
+	"math/big"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
-func TestLimitOne(t *testing.T) {
+func TestLimit(t *testing.T) {
 	ctx := context.Background()
 
 	limit := NewLimitGroup(1)
@@ -18,27 +23,43 @@ func TestLimitOne(t *testing.T) {
 	}
 }
 
-func TestLimitOrdered(t *testing.T) {
+func TestLimitSingleConcurrent(t *testing.T) {
 	ctx := context.Background()
 
-	numbers := make(chan int, 2)
+	executing := atomic.Bool{}
+
+	nestedWork := func(_ context.Context) error {
+		if executing.Load() {
+			return fmt.Errorf("concurrent execution detected")
+		}
+
+		executing.Store(true)
+		defer executing.Store(false)
+
+		sleepTime, err := rand.Int(rand.Reader, big.NewInt(5))
+		if err != nil {
+			return fmt.Errorf("could not get random int: %w", err)
+		}
+
+		time.Sleep(time.Duration(sleepTime.Int64()) * time.Millisecond)
+		return nil
+	}
 
 	limit := NewLimitGroup(1)
 	limit.Add(func(ctx context.Context) error {
-		numbers <- 1
-		return nil
+		t.Log("run 1")
+		return nestedWork(ctx)
 	})
 	limit.Add(func(ctx context.Context) error {
-		numbers <- 2
-		return nil
+		t.Log("run 2")
+		return nestedWork(ctx)
+	})
+	limit.Add(func(ctx context.Context) error {
+		t.Log("run 3")
+		return nestedWork(ctx)
 	})
 
-	err := limit.Run(ctx)
-	if err != nil {
-		t.Fail()
-	}
-
-	if <-numbers != 1 && <-numbers != 2 {
-		t.Error("numbers were not received in order")
+	if err := limit.Run(ctx); err != nil {
+		t.Error(err)
 	}
 }

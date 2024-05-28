@@ -66,8 +66,6 @@ func (w *worker) doScan(ctx context.Context) error {
 		})
 	}
 
-	// logrus.Debugf("Launching network scanners")
-
 	if err = lg.Run(ctx); err != nil {
 		return err
 	}
@@ -77,15 +75,16 @@ func (w *worker) doScan(ctx context.Context) error {
 
 func (w *worker) doNetworkScan(ctx context.Context, network database.Network) error {
 	logrus.Debugf("Scanning network %s", network.Name)
+	defer logrus.Debugf("Finished scanning network %s", network.Name)
 
 	options := naabuRunner.Options{
 		Host:             goflags.StringSlice{fmt.Sprintf("%s/%d", network.Address, network.Cidr)},
-		ScanType:         "sc",
+		ScanType:         "c",
 		Silent:           true,
 		Ping:             true,
 		ReversePTR:       true,
 		JSON:             true,
-		Stream:           true,
+		Stream:           false,
 		ServiceDiscovery: true,
 		Nmap:             true,
 		Output:           "/dev/null",
@@ -103,7 +102,13 @@ func (w *worker) doNetworkScan(ctx context.Context, network database.Network) er
 	}
 	defer runner.Close()
 
-	return runner.RunEnumeration(ctx)
+	err = runner.RunEnumeration(ctx)
+	if err != nil {
+		logrus.Errorf("error while running network enumeration: %s", err)
+		return err
+	}
+
+	return nil
 }
 
 func (w *worker) receiveHostResult(ctx context.Context, network database.Network, scanResult *naabuResult.HostResult) error {

@@ -1,7 +1,7 @@
 sqlc_generated := database/db.go database/models.go database/queries.sql.go
 
 maparoon: **/*.go $(sqlc_generated)
-	go build ./
+	go build $(buildargs) ./
 
 $(sqlc_generated): sqlc.yml database/queries.sql database/schema.sql
 	sqlc generate
