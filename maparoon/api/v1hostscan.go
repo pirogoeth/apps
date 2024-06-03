@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
+	"github.com/blevesearch/bleve/search"
 	"github.com/gin-gonic/gin"
 	"github.com/pirogoeth/apps/maparoon/database"
 	"github.com/pirogoeth/apps/maparoon/types"
@@ -18,13 +20,60 @@ type v1HostScanEndpoints struct {
 
 func (e *v1HostScanEndpoints) RegisterRoutesTo(router *gin.RouterGroup) {
 	router.GET("/hostscan", e.getHostScan)
+	router.GET("/hostscans/search", e.searchHostScans)
 	router.POST("/hostscans", e.createHostScans)
 	router.DELETE("/hostscans/:address", e.deleteHostScan)
 }
 
+// getHostScan retrieves a host scan by its address
 func (e *v1HostScanEndpoints) getHostScan(ctx *gin.Context) {
 	ctx.AbortWithStatusJSON(http.StatusNotImplemented, &gin.H{
 		"message": "not implemented",
+	})
+}
+
+// searchHostScans retrieves host scans by a search query (Bleve syntax)
+func (e *v1HostScanEndpoints) searchHostScans(ctx *gin.Context) {
+	query := ctx.Query("query")
+
+	explain, err := strconv.ParseBool(queryOr(ctx, "explain", "false"))
+	if err != nil {
+		ctx.AbortWithStatusJSON(http.StatusBadRequest, &gin.H{
+			"message": fmt.Sprintf("%s: %s", ErrInvalidParameter, "explain"),
+		})
+		return
+	}
+
+	fields := ctx.QueryArray("fields")
+	if len(fields) == 0 {
+		fields = []string{"*"}
+	}
+
+	var sortOrder search.SortOrder
+	sortParam := ctx.QueryArray("sort")
+	if len(sortParam) > 0 {
+		sortOrder = search.ParseSortOrderStrings(ctx.QueryArray("sort"))
+	}
+
+	logrus.Debugf("check-out searcher handle")
+	handle := e.Searcher.Handle()
+	defer handle.Close()
+
+	searchReq := handle.PrepareSearchRequest(query)
+	searchReq.Fields = fields
+	searchReq.Explain = explain
+	searchReq.Sort = sortOrder
+
+	results, err := handle.Search(searchReq)
+	if err != nil {
+		ctx.AbortWithStatusJSON(http.StatusInternalServerError, &gin.H{
+			"message": fmt.Sprintf("%s: %s", ErrDatabaseLookup, err.Error()),
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, &gin.H{
+		"results": results,
 	})
 }
 
@@ -87,9 +136,10 @@ func (e *v1HostScanEndpoints) createHostScans(ctx *gin.Context) {
 	batch := handle.Index().NewBatch()
 	for _, hostScan := range req.HostScans {
 		batch.Index(hostScan.Address, &types.HostScanDocument{
-			Address:     hostScan.Address,
-			Network:     network,
-			ScanDetails: hostScan.ScanDetails,
+			Address:       hostScan.Address,
+			Network:       network,
+			HostDetails:   hostScan.HostDetails,
+			ScriptDetails: hostScan.ScriptDetails,
 		})
 	}
 

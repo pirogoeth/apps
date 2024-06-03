@@ -135,7 +135,7 @@ func (c *Client) CreateHostPort(ctx context.Context, hostPortParams *database.Cr
 	return ret, nil
 }
 
-func (c *Client) CreateHostScans(ctx context.Context, hostScansReq types.CreateHostScansRequest) (any, error) {
+func (c *Client) CreateHostScans(ctx context.Context, hostScansReq types.CreateHostScansRequest) (*commonResponse, error) {
 	resp, err := c.httpClient.R().
 		SetContext(ctx).
 		SetBodyJsonMarshal(hostScansReq).
@@ -144,9 +144,15 @@ func (c *Client) CreateHostScans(ctx context.Context, hostScansReq types.CreateH
 		return nil, err
 	}
 
-	if resp.IsError() {
+	if resp.IsErrorState() {
 		return nil, fmt.Errorf("error: %s", resp.String())
 	}
 
-	return resp.Bytes(), nil
+	ret := &commonResponse{}
+	if err := json.Unmarshal(resp.Bytes(), ret); err != nil {
+		logrus.Errorf("could not unmarshal response: %s", err)
+		return nil, err
+	}
+
+	return ret, nil
 }

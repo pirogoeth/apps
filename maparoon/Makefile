@@ -24,3 +24,7 @@ sudo-run-debug-worker: maparoon
 clean:
 	rm -f maparoon
 	rm -f $(sqlc_generated)
+
+.PHONY: clean-data
+clean-data:
+	rm -fv maparoon.db index

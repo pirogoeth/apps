@@ -6,14 +6,16 @@ import (
 )
 
 type HostScan struct {
-	Address     string    `json:"address"`
-	ScanDetails nmap.Host `json:"scan"`
+	Address       string                 `json:"address"`
+	HostDetails   nmap.Host              `json:"host"`
+	ScriptDetails map[string]interface{} `json:"scripts"`
 }
 
 type HostScanDocument struct {
-	Address     string           `json:"address"`
-	Network     database.Network `json:"network"`
-	ScanDetails nmap.Host        `json:"scan"`
+	Address       string                 `json:"address"`
+	Network       database.Network       `json:"network"`
+	HostDetails   nmap.Host              `json:"host"`
+	ScriptDetails map[string]interface{} `json:"scripts"`
 }
 
 type CreateHostScansRequest struct {

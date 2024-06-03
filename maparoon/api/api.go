@@ -73,3 +73,12 @@ func extractHostFromPathParam(ctx *gin.Context, endpointCtx *types.ApiContext, p
 
 	return &host, true
 }
+
+func queryOr(ctx *gin.Context, key, defaultValue string) string {
+	value := ctx.Query(key)
+	if value == "" {
+		return defaultValue
+	}
+
+	return value
+}

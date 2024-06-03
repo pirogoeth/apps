@@ -98,8 +98,9 @@ func (w *worker) indexHostScans(ctx context.Context, network database.Network, r
 	hostScans := make([]types.HostScan, 0, len(run.Hosts))
 	for _, host := range run.Hosts {
 		hostScans = append(hostScans, types.HostScan{
-			Address:     host.Addresses[0].Addr,
-			ScanDetails: host,
+			Address:       host.Addresses[0].Addr,
+			HostDetails:   host,
+			ScriptDetails: flattenScriptDetails(host),
 		})
 	}
 
@@ -112,7 +113,69 @@ func (w *worker) indexHostScans(ctx context.Context, network database.Network, r
 		return err
 	}
 
-	logrus.Debugf("host scans response: %#v", resp)
+	logrus.Debugf("host scans response: %s", resp.Message)
 
 	return nil
+}
+
+func flattenScriptDetails(nmapHost nmap.Host) map[string]interface{} {
+	scriptDetails := make(map[string]interface{})
+	for _, port := range nmapHost.Ports {
+		portLevel := make(map[string]interface{})
+		scriptDetails[fmt.Sprintf("%d", port.PortId)] = portLevel
+
+		for _, script := range port.Scripts {
+			scriptLevel := make(map[string]interface{})
+			if script.Elements != nil {
+				if len(script.Elements) == 1 && script.Elements[0].Key == "" {
+					scriptLevel["_output"] = script.Elements[0].Value
+					continue
+				}
+
+				for _, elem := range script.Elements {
+					scriptLevel[elem.Key] = elem.Value
+				}
+			}
+
+			if script.Tables != nil {
+				for idx, table := range script.Tables {
+					key := fmt.Sprintf("%d", idx)
+					if table.Key != "" {
+						key = table.Key
+					}
+					scriptLevel[key] = recurseTable(table)
+				}
+			}
+
+			if script.Elements == nil && script.Tables == nil {
+				portLevel[script.Id] = script.Output
+			} else {
+				scriptLevel["_output"] = script.Output
+				portLevel[script.Id] = scriptLevel
+			}
+		}
+	}
+
+	return scriptDetails
+}
+
+func recurseTable(table nmap.Table) map[string]interface{} {
+	tableMap := make(map[string]interface{})
+	if len(table.Elements) > 0 {
+		for _, elem := range table.Elements {
+			tableMap[elem.Key] = elem.Value
+		}
+	}
+
+	if len(table.Table) > 0 {
+		for idx, subTable := range table.Table {
+			key := fmt.Sprintf("%d", idx)
+			if subTable.Key != "" {
+				key = subTable.Key
+			}
+			tableMap[key] = recurseTable(subTable)
+		}
+	}
+
+	return tableMap
 }

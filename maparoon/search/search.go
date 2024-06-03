@@ -51,7 +51,18 @@ func NewBleveSearcher(indexDir string) (*BleveSearcher, error) {
 }
 
 func createBleveIndex(indexPath string) (bleve.Index, error) {
+	portsMapping := bleve.NewDocumentMapping()
+	portsMapping.AddSubDocumentMapping("scripts", bleve.NewDocumentDisabledMapping())
+
+	hostMapping := bleve.NewDocumentMapping()
+	hostMapping.AddSubDocumentMapping("ports", portsMapping)
+
+	docMapping := bleve.NewDocumentMapping()
+	docMapping.AddSubDocumentMapping("host", hostMapping)
+
 	indexMapping := bleve.NewIndexMapping()
+	indexMapping.AddDocumentMapping("_default", docMapping)
+
 	index, err := bleve.New(indexPath, indexMapping)
 	if err != nil {
 		return nil, err
@@ -99,10 +110,12 @@ func (h *searcherHandle) Index() bleve.Index {
 	return *h.index
 }
 
-func (h *searcherHandle) SearchQueryString(queryString string) (*bleve.SearchResult, error) {
-	query := bleve.NewQueryStringQuery(queryString)
-	searchRequest := bleve.NewSearchRequest(query)
-	searchResults, err := (*h.index).Search(searchRequest)
+func (h *searcherHandle) PrepareSearchRequest(queryString string) *bleve.SearchRequest {
+	return bleve.NewSearchRequest(bleve.NewQueryStringQuery(queryString))
+}
+
+func (h *searcherHandle) Search(searchReq *bleve.SearchRequest) (*bleve.SearchResult, error) {
+	searchResults, err := (*h.index).Search(searchReq)
 	if err != nil {
 		return nil, err
 	}
