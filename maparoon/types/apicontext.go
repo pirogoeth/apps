@@ -2,6 +2,7 @@ package types
 
 import (
 	"github.com/pirogoeth/apps/maparoon/database"
+	"github.com/pirogoeth/apps/maparoon/search"
 )
 
 type ApiContext struct {
@@ -10,4 +11,7 @@ type ApiContext struct {
 
 	// Querier is the database interface
 	Querier *database.Queries
+
+	// Searcher is the search index interface
+	Searcher *search.BleveSearcher
 }

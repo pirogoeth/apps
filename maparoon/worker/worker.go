@@ -5,17 +5,20 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path"
 	"time"
 
 	"github.com/projectdiscovery/goflags"
 	naabuResult "github.com/projectdiscovery/naabu/v2/pkg/result"
 	naabuRunner "github.com/projectdiscovery/naabu/v2/pkg/runner"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/sys/unix"
 
 	"github.com/pirogoeth/apps/maparoon/client"
 	"github.com/pirogoeth/apps/maparoon/database"
 	"github.com/pirogoeth/apps/maparoon/types"
-	"github.com/pirogoeth/apps/pkg/goro"
 )
 
 type worker struct {
@@ -35,7 +38,7 @@ func (w *worker) Run(ctx context.Context) {
 	for {
 		select {
 		case <-time.After(scanInterval):
-			err := w.doScan(ctx)
+			err := w.findAndScanNetworks(ctx)
 			if err != nil {
 				logrus.Errorf("encountered error during scan: %s", err.Error())
 			}
@@ -48,7 +51,7 @@ func (w *worker) Run(ctx context.Context) {
 	}
 }
 
-func (w *worker) doScan(ctx context.Context) error {
+func (w *worker) findAndScanNetworks(ctx context.Context) error {
 	networks, err := w.apiClient.ListNetworks(ctx)
 	if err != nil {
 		return err
@@ -56,41 +59,63 @@ func (w *worker) doScan(ctx context.Context) error {
 
 	logrus.Debugf("Found %d networks, only scanning %d concurrently",
 		len(networks.Networks),
-		w.cfg.Worker.ConcurrentScanLimit,
+		w.cfg.Worker.ConcurrentNetworkScanLimit,
 	)
 
-	lg := goro.NewLimitGroup(w.cfg.Worker.ConcurrentScanLimit)
+	eg, _ := errgroup.WithContext(ctx)
+	eg.SetLimit(w.cfg.Worker.ConcurrentNetworkScanLimit)
 	for _, network := range networks.Networks {
-		lg.Add(func(ctx context.Context) error {
-			return w.doNetworkScan(ctx, network)
+		network := network
+		eg.Go(func() error {
+			return w.startNetworkScanSingle(ctx, network)
 		})
 	}
 
-	if err = lg.Run(ctx); err != nil {
+	if err = eg.Wait(); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (w *worker) doNetworkScan(ctx context.Context, network database.Network) error {
+func (w *worker) startNetworkScanSingle(ctx context.Context, network database.Network) error {
 	logrus.Debugf("Scanning network %s", network.Name)
 	defer logrus.Debugf("Finished scanning network %s", network.Name)
 
+	scansDir := path.Join(os.TempDir(), "maparoon")
+	if err := os.MkdirAll(scansDir, 0750); err != nil {
+		return fmt.Errorf("could not create maparoon temp directory: %w", err)
+	}
+
+	scanPipe := path.Join(scansDir, fmt.Sprintf("network-%d.sock", network.ID))
+	if err := os.Remove(scanPipe); err != nil {
+		logrus.Infof("could not remove existing fifo: %s", err)
+	}
+
+	if err := unix.Mkfifo(scanPipe, 0666); err != nil {
+		return fmt.Errorf("could not create fifo for nmap scan: %w", err)
+	}
+
+	scanDoneCh := make(chan bool)
+	procEg, _ := errgroup.WithContext(ctx)
+	procEg.Go(func() error {
+		return w.processScanResults(ctx, network, scanPipe, scanDoneCh)
+	})
+
 	options := naabuRunner.Options{
-		Host:             goflags.StringSlice{fmt.Sprintf("%s/%d", network.Address, network.Cidr)},
-		ScanType:         "c",
-		Silent:           true,
-		Ping:             true,
-		ReversePTR:       true,
-		JSON:             true,
-		Stream:           false,
-		ServiceDiscovery: true,
-		Nmap:             true,
-		Output:           "/dev/null",
+		Host:       goflags.StringSlice{fmt.Sprintf("%s/%d", network.Address, network.Cidr)},
+		ScanType:   "c",
+		Silent:     true,
+		Ping:       true,
+		ReversePTR: true,
+		JSON:       true,
+		Stream:     false,
+		Nmap:       true,
+		NmapCLI:    fmt.Sprintf("nmap -oX %s -A -O -sV -v0 --noninteractive", scanPipe),
+		Output:     "/dev/null",
 		OnResult: func(res *naabuResult.HostResult) {
 			logrus.Debugf("Found host %s", res.IP)
-			if err := w.receiveHostResult(ctx, network, res); err != nil {
+			if err := w.saveDiscoveredHost(ctx, network, res); err != nil {
 				logrus.Errorf("failed to receive host result: %s", err)
 			}
 		},
@@ -108,19 +133,23 @@ func (w *worker) doNetworkScan(ctx context.Context, network database.Network) er
 		return err
 	}
 
+	scanDoneCh <- true
+
+	if err = procEg.Wait(); err != nil {
+		logrus.Errorf("error while processing scan results: %s", err)
+		return err
+	}
+
 	return nil
 }
 
-func (w *worker) receiveHostResult(ctx context.Context, network database.Network, scanResult *naabuResult.HostResult) error {
+func (w *worker) saveDiscoveredHost(ctx context.Context, network database.Network, scanResult *naabuResult.HostResult) error {
 	var hostAddress string
 
 	resp, err := w.apiClient.CreateHost(ctx, &database.CreateHostParams{
 		Address:   scanResult.IP,
 		NetworkID: network.ID,
 		Comments:  "",
-		Attributes: mustJsonify(attributes{
-			"hostname": scanResult.Host,
-		}),
 	})
 	if err != nil {
 		if !errors.Is(err, client.ErrAlreadyExists) {
@@ -135,10 +164,9 @@ func (w *worker) receiveHostResult(ctx context.Context, network database.Network
 
 	for _, port := range scanResult.Ports {
 		resp, err := w.apiClient.CreateHostPort(ctx, &database.CreateHostPortParams{
-			Address:    hostAddress,
-			Port:       int64(port.Port),
-			Protocol:   port.Protocol.String(),
-			Attributes: `{}`,
+			Address:  hostAddress,
+			Port:     int64(port.Port),
+			Protocol: port.Protocol.String(),
 		})
 		if err != nil {
 			if !errors.Is(err, client.ErrAlreadyExists) {

@@ -1,9 +1,11 @@
-sqlc_generated := database/db.go database/models.go database/queries.sql.go
+sqlc_generated := database/db.go database/models.go database/queries.sql database/queries.sql.go
 
 maparoon: **/*.go $(sqlc_generated)
 	go build $(buildargs) ./
 
-$(sqlc_generated): sqlc.yml database/queries.sql database/schema.sql
+$(sqlc_generated): sqlc.yml database/queries/*.sql database/schema.sql
+	awk '1; END {print ""}' database/queries/*.sql > database/queries.sql
+	sqlc vet
 	sqlc generate
 
 .PHONY: run-debug-api
@@ -22,4 +24,3 @@ sudo-run-debug-worker: maparoon
 clean:
 	rm -f maparoon
 	rm -f $(sqlc_generated)
-	rm -f maparoon.db

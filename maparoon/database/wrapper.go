@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	_ "embed"
 	"fmt"
+	"io"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/sirupsen/logrus"
@@ -13,7 +14,30 @@ import (
 //go:embed schema.sql
 var dbSchema string
 
-func Open(ctx context.Context, path string) (*Queries, error) {
+var _ io.Closer = (*DbWrapper)(nil)
+
+type DbWrapper struct {
+	*Queries
+
+	db *sql.DB
+}
+
+func Wrap(db *sql.DB) *DbWrapper {
+	return &DbWrapper{
+		Queries: New(db),
+		db:      db,
+	}
+}
+
+func (w *DbWrapper) Close() error {
+	return w.db.Close()
+}
+
+func (w *DbWrapper) Querier() *Queries {
+	return w.Queries
+}
+
+func Open(ctx context.Context, path string) (*DbWrapper, error) {
 	if path == "" {
 		return nil, fmt.Errorf("database path is empty")
 	}
@@ -30,5 +54,5 @@ func Open(ctx context.Context, path string) (*Queries, error) {
 		return nil, fmt.Errorf("could not run schema command: %w", err)
 	}
 
-	return New(db), nil
+	return Wrap(db), nil
 }

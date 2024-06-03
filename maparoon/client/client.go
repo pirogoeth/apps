@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/imroc/req/v3"
 	"github.com/pirogoeth/apps/maparoon/database"
+	"github.com/pirogoeth/apps/maparoon/types"
 	"github.com/sirupsen/logrus"
 )
 
@@ -91,17 +93,17 @@ func (c *Client) CreateHost(ctx context.Context, hostParams *database.CreateHost
 		return nil, err
 	}
 
-	switch resp.StatusCode {
-	case http.StatusConflict:
-		return nil, ErrAlreadyExists
-	case http.StatusInternalServerError:
-		return nil, ErrInternal
-	}
-
 	ret := &HostsResponse{}
 	if err := json.Unmarshal(resp.Bytes(), ret); err != nil {
 		logrus.Errorf("could not unmarshal response: %s", err)
 		return nil, err
+	}
+
+	switch resp.StatusCode {
+	case http.StatusConflict:
+		return nil, fmt.Errorf("%w: %s", ErrAlreadyExists, ret.Error)
+	case http.StatusInternalServerError:
+		return nil, fmt.Errorf("%w: %s", ErrInternal, ret.Error)
 	}
 
 	return ret, nil
@@ -117,18 +119,34 @@ func (c *Client) CreateHostPort(ctx context.Context, hostPortParams *database.Cr
 		return nil, err
 	}
 
-	switch resp.StatusCode {
-	case http.StatusConflict:
-		return nil, ErrAlreadyExists
-	case http.StatusInternalServerError:
-		return nil, ErrInternal
-	}
-
 	ret := &HostPortsResponse{}
 	if err := json.Unmarshal(resp.Bytes(), ret); err != nil {
 		logrus.Errorf("could not unmarshal response: %s", err)
 		return nil, err
 	}
 
+	switch resp.StatusCode {
+	case http.StatusConflict:
+		return nil, fmt.Errorf("%w: %s", ErrAlreadyExists, ret.Error)
+	case http.StatusInternalServerError:
+		return nil, fmt.Errorf("%w: %s", ErrInternal, ret.Error)
+	}
+
 	return ret, nil
+}
+
+func (c *Client) CreateHostScans(ctx context.Context, hostScansReq types.CreateHostScansRequest) (any, error) {
+	resp, err := c.httpClient.R().
+		SetContext(ctx).
+		SetBodyJsonMarshal(hostScansReq).
+		Post("/v1/hostscans")
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.IsError() {
+		return nil, fmt.Errorf("error: %s", resp.String())
+	}
+
+	return resp.Bytes(), nil
 }

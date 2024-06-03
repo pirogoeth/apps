@@ -35,6 +35,9 @@ func MustRegister(router *gin.Engine, apiContext *types.ApiContext) {
 
 	v1HostPort := &v1HostPortEndpoints{apiContext}
 	v1HostPort.RegisterRoutesTo(groupV1)
+
+	v1HostScan := &v1HostScanEndpoints{apiContext}
+	v1HostScan.RegisterRoutesTo(groupV1)
 }
 
 func assertContentTypeJson(ctx *gin.Context) bool {

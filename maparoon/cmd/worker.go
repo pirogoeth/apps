@@ -3,13 +3,13 @@ package cmd
 import (
 	"context"
 	"os"
-	"os/signal"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
 	"github.com/pirogoeth/apps/maparoon/client"
 	"github.com/pirogoeth/apps/maparoon/worker"
+	"github.com/pirogoeth/apps/pkg/system"
 )
 
 var workerCmd = &cobra.Command{
@@ -19,7 +19,7 @@ var workerCmd = &cobra.Command{
 }
 
 func workerFunc(cmd *cobra.Command, args []string) {
-	cfg := appStart()
+	cfg := appStart(ComponentWorker)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -35,16 +35,6 @@ func workerFunc(cmd *cobra.Command, args []string) {
 	w := worker.New(apiClient, cfg)
 	go w.Run(ctx)
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt)
-
-	for {
-		select {
-		case <-sigCh:
-			cancel()
-		case <-ctx.Done():
-			logrus.Infof("Sweet dreams!")
-			return
-		}
-	}
+	sw := system.NewSignalWaiter(os.Interrupt)
+	sw.Wait(ctx, cancel)
 }

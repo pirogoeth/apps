@@ -11,10 +11,55 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func Setup() {
+const (
+	FieldAppname   = "appname"
+	FieldComponent = "component"
+)
+
+type mod func(*logrus.Entry) error
+
+func WithAppName(appName string) mod {
+	return func(e *logrus.Entry) error {
+		e.Data[FieldAppname] = appName
+		return nil
+	}
+}
+
+func WithComponentName(component string) mod {
+	return func(e *logrus.Entry) error {
+		e.Data[FieldComponent] = component
+		return nil
+	}
+}
+
+type hookWrapper struct {
+	mods []mod
+}
+
+var _ logrus.Hook = (*hookWrapper)(nil)
+
+func (h *hookWrapper) Levels() []logrus.Level {
+	return logrus.AllLevels
+}
+
+func (h *hookWrapper) Fire(entry *logrus.Entry) error {
+	for _, mod := range h.mods {
+		if err := mod(entry); err != nil {
+			return fmt.Errorf("logging mod encountered: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func Setup(mods ...mod) {
 	logLevel, err := logrus.ParseLevel(os.Getenv("LOG_LEVEL"))
 	if err != nil {
 		logLevel = logrus.InfoLevel
+	}
+
+	if len(mods) > 0 {
+		logrus.AddHook(&hookWrapper{mods: mods})
 	}
 
 	logrus.SetLevel(logLevel)

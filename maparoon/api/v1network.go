@@ -19,16 +19,16 @@ type v1NetworkEndpoints struct {
 	*types.ApiContext
 }
 
-func (v1n *v1NetworkEndpoints) RegisterRoutesTo(router *gin.RouterGroup) {
-	router.GET("/networks", v1n.listNetworks)
-	router.GET("/network", v1n.getNetwork)
-	router.POST("/networks", v1n.createNetwork)
-	router.PUT("/networks/:id", v1n.updateNetwork)
-	router.DELETE("/networks/:id", v1n.deleteNetwork)
+func (e *v1NetworkEndpoints) RegisterRoutesTo(router *gin.RouterGroup) {
+	router.GET("/networks", e.listNetworks)
+	router.GET("/network", e.getNetwork)
+	router.POST("/networks", e.createNetwork)
+	router.PUT("/networks/:id", e.updateNetwork)
+	router.DELETE("/networks/:id", e.deleteNetwork)
 }
 
-func (v1n *v1NetworkEndpoints) listNetworks(ctx *gin.Context) {
-	networks, err := v1n.Querier.ListNetworks(ctx)
+func (e *v1NetworkEndpoints) listNetworks(ctx *gin.Context) {
+	networks, err := e.Querier.ListNetworks(ctx)
 	if err != nil {
 		logrus.Errorf("could not list networks: %#v", err)
 		ctx.AbortWithStatusJSON(http.StatusInternalServerError, &gin.H{
@@ -47,7 +47,7 @@ func (v1n *v1NetworkEndpoints) listNetworks(ctx *gin.Context) {
 	})
 }
 
-func (v1n *v1NetworkEndpoints) getNetwork(ctx *gin.Context) {
+func (e *v1NetworkEndpoints) getNetwork(ctx *gin.Context) {
 	var network database.Network
 	if networkIdStr := ctx.Query("id"); networkIdStr != "" {
 		networkId, err := strconv.ParseInt(networkIdStr, 10, 0)
@@ -59,7 +59,7 @@ func (v1n *v1NetworkEndpoints) getNetwork(ctx *gin.Context) {
 			return
 		}
 
-		network, err = v1n.Querier.GetNetworkById(ctx, networkId)
+		network, err = e.Querier.GetNetworkById(ctx, networkId)
 		if err != nil {
 			ctx.AbortWithStatusJSON(http.StatusInternalServerError, &gin.H{
 				"message": ErrDatabaseLookup,
@@ -87,7 +87,7 @@ func (v1n *v1NetworkEndpoints) getNetwork(ctx *gin.Context) {
 			return
 		}
 
-		network, err := v1n.Querier.GetNetworkByAddress(ctx, string(addr))
+		network, err := e.Querier.GetNetworkByAddress(ctx, string(addr))
 		if err != nil {
 			ctx.JSON(http.StatusInternalServerError, &gin.H{
 				"message": ErrDatabaseLookup,
@@ -105,7 +105,7 @@ func (v1n *v1NetworkEndpoints) getNetwork(ctx *gin.Context) {
 	})
 }
 
-func (v1n *v1NetworkEndpoints) createNetwork(ctx *gin.Context) {
+func (e *v1NetworkEndpoints) createNetwork(ctx *gin.Context) {
 	if ctx.ContentType() != "application/json" {
 		ctx.AbortWithStatusJSON(http.StatusNotAcceptable, &gin.H{
 			"message": fmt.Sprintf("%s: %s", ErrFailedToBind, "invalid content-type"),
@@ -115,7 +115,6 @@ func (v1n *v1NetworkEndpoints) createNetwork(ctx *gin.Context) {
 
 	networkParams := database.CreateNetworkParams{
 		Comments:   "",
-		Attributes: "{}",
 	}
 	if err := ctx.BindJSON(&networkParams); err != nil {
 		logrus.Errorf("failed to bind network details to database.CreateNetworkParams: %s", err)
@@ -126,7 +125,7 @@ func (v1n *v1NetworkEndpoints) createNetwork(ctx *gin.Context) {
 		return
 	}
 
-	_, err := v1n.Querier.GetNetworkByAddress(ctx, networkParams.Address)
+	_, err := e.Querier.GetNetworkByAddress(ctx, networkParams.Address)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		logrus.Errorf("failed to check if network exists: %s", err)
 		ctx.AbortWithStatusJSON(http.StatusInternalServerError, &gin.H{
@@ -143,7 +142,7 @@ func (v1n *v1NetworkEndpoints) createNetwork(ctx *gin.Context) {
 		return
 	}
 
-	network, err := v1n.Querier.CreateNetwork(ctx, networkParams)
+	network, err := e.Querier.CreateNetwork(ctx, networkParams)
 	if err != nil {
 		logrus.Errorf("failed to create network in database: %s", err)
 		ctx.AbortWithStatusJSON(http.StatusInternalServerError, &gin.H{
@@ -159,13 +158,13 @@ func (v1n *v1NetworkEndpoints) createNetwork(ctx *gin.Context) {
 	})
 }
 
-func (v1n *v1NetworkEndpoints) deleteNetwork(ctx *gin.Context) {
-	network, ok := v1n.getNetworkByPathParam(ctx)
+func (e *v1NetworkEndpoints) deleteNetwork(ctx *gin.Context) {
+	network, ok := e.getNetworkByPathParam(ctx)
 	if !ok {
 		return
 	}
 
-	err := v1n.Querier.DeleteNetwork(ctx, network.ID)
+	err := e.Querier.DeleteNetwork(ctx, network.ID)
 	if err != nil {
 		logrus.Errorf("failed to delete network: %s", err)
 		ctx.AbortWithStatusJSON(http.StatusInternalServerError, &gin.H{
@@ -181,8 +180,8 @@ func (v1n *v1NetworkEndpoints) deleteNetwork(ctx *gin.Context) {
 	})
 }
 
-func (v1n *v1NetworkEndpoints) updateNetwork(ctx *gin.Context) {
-	network, ok := v1n.getNetworkByPathParam(ctx)
+func (e *v1NetworkEndpoints) updateNetwork(ctx *gin.Context) {
+	network, ok := e.getNetworkByPathParam(ctx)
 	if !ok {
 		return
 	}
@@ -191,7 +190,6 @@ func (v1n *v1NetworkEndpoints) updateNetwork(ctx *gin.Context) {
 		ID:         network.ID,
 		Name:       network.Name,
 		Comments:   network.Comments,
-		Attributes: network.Attributes,
 	}
 	if err := ctx.BindJSON(&networkUpdate); err != nil {
 		logrus.Warnf("failed to bind network details to database.UpdateNetworkParams: %s", err)
@@ -202,7 +200,7 @@ func (v1n *v1NetworkEndpoints) updateNetwork(ctx *gin.Context) {
 		return
 	}
 
-	newNetwork, err := v1n.Querier.UpdateNetwork(ctx, networkUpdate)
+	newNetwork, err := e.Querier.UpdateNetwork(ctx, networkUpdate)
 	if err != nil {
 		logrus.Errorf("failed to update network record: %s", err)
 		ctx.AbortWithStatusJSON(http.StatusInternalServerError, &gin.H{
@@ -218,7 +216,7 @@ func (v1n *v1NetworkEndpoints) updateNetwork(ctx *gin.Context) {
 	})
 }
 
-func (v1n *v1NetworkEndpoints) getNetworkByPathParam(ctx *gin.Context) (*database.Network, bool) {
+func (e *v1NetworkEndpoints) getNetworkByPathParam(ctx *gin.Context) (*database.Network, bool) {
 	networkIdStr := ctx.Param("id")
 	if networkIdStr == "" {
 		logrus.Debugf("blank `id` parameter provided")
@@ -238,7 +236,7 @@ func (v1n *v1NetworkEndpoints) getNetworkByPathParam(ctx *gin.Context) (*databas
 		return nil, false
 	}
 
-	network, err := v1n.Querier.GetNetworkById(ctx, networkId)
+	network, err := e.Querier.GetNetworkById(ctx, networkId)
 	if err != nil {
 		logrus.Errorf("error fetching network from database (by id): %s", err)
 		ctx.AbortWithStatusJSON(http.StatusInternalServerError, &gin.H{

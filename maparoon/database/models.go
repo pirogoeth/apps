@@ -7,27 +7,44 @@ package database
 import ()
 
 type Host struct {
-	Address    string `json:"address"`
-	NetworkID  int64  `json:"network_id"`
-	Comments   string `json:"comments"`
-	Attributes string `json:"attributes"`
+	Address   string `json:"address"`
+	NetworkID int64  `json:"network_id"`
+	Comments  string `json:"comments"`
+}
+
+type HostAttribute struct {
+	Address string `json:"address"`
+	Key     string `json:"key"`
+	Value   string `json:"value"`
 }
 
 type HostPort struct {
-	Address    string `json:"address"`
-	Port       int64  `json:"port"`
-	Protocol   string `json:"protocol"`
-	Comments   string `json:"comments"`
-	Attributes string `json:"attributes"`
+	Address  string `json:"address"`
+	Port     int64  `json:"port"`
+	Protocol string `json:"protocol"`
+	Comments string `json:"comments"`
+}
+
+type HostPortAttribute struct {
+	Address  string `json:"address"`
+	Port     int64  `json:"port"`
+	Protocol string `json:"protocol"`
+	Key      string `json:"key"`
+	Value    string `json:"value"`
 }
 
 type Network struct {
-	ID         int64  `json:"id"`
-	Name       string `json:"name"`
-	Address    string `json:"address"`
-	Cidr       int64  `json:"cidr"`
-	Comments   string `json:"comments"`
-	Attributes string `json:"attributes"`
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Address  string `json:"address"`
+	Cidr     int64  `json:"cidr"`
+	Comments string `json:"comments"`
+}
+
+type NetworkAttribute struct {
+	NetworkID int64  `json:"network_id"`
+	Key       string `json:"key"`
+	Value     string `json:"value"`
 }
 
 type NetworkScan struct {

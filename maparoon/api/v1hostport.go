@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -16,21 +17,21 @@ type v1HostPortEndpoints struct {
 	*types.ApiContext
 }
 
-func (v1hp *v1HostPortEndpoints) RegisterRoutesTo(router *gin.RouterGroup) {
-	router.GET("/host/:host_address/ports", v1hp.listHostPorts)
-	router.GET("/host/:host_address/port", v1hp.getHostPort)
-	router.POST("/host/:host_address/ports", v1hp.createHostPort)
-	router.PUT("/host/:host_address/ports/:number/:protocol", v1hp.updateHostPort)
-	router.DELETE("/host/:host_address/ports/:number/:protocol", v1hp.deleteHostPort)
+func (e *v1HostPortEndpoints) RegisterRoutesTo(router *gin.RouterGroup) {
+	router.GET("/host/:host_address/ports", e.listHostPorts)
+	router.GET("/host/:host_address/port", e.getHostPort)
+	router.POST("/host/:host_address/ports", e.createHostPort)
+	router.PUT("/host/:host_address/ports/:number/:protocol", e.updateHostPort)
+	router.DELETE("/host/:host_address/ports/:number/:protocol", e.deleteHostPort)
 }
 
-func (v1hp *v1HostPortEndpoints) listHostPorts(ctx *gin.Context) {
-	host, ok := extractHostFromPathParam(ctx, v1hp.ApiContext, "host_address")
+func (e *v1HostPortEndpoints) listHostPorts(ctx *gin.Context) {
+	host, ok := extractHostFromPathParam(ctx, e.ApiContext, "host_address")
 	if !ok {
 		return
 	}
 
-	hostPorts, err := v1hp.Querier.ListHostPortsByHostAddress(ctx, host.Address)
+	hostPorts, err := e.Querier.ListHostPortsByHostAddress(ctx, host.Address)
 	if err != nil {
 		logrus.Errorf("could not list host ports: %s", err)
 		ctx.AbortWithStatusJSON(http.StatusInternalServerError, &gin.H{
@@ -46,8 +47,8 @@ func (v1hp *v1HostPortEndpoints) listHostPorts(ctx *gin.Context) {
 	})
 }
 
-func (v1hp *v1HostPortEndpoints) getHostPort(ctx *gin.Context) {
-	host, ok := extractHostFromPathParam(ctx, v1hp.ApiContext, "host_address")
+func (e *v1HostPortEndpoints) getHostPort(ctx *gin.Context) {
+	host, ok := extractHostFromPathParam(ctx, e.ApiContext, "host_address")
 	if !ok {
 		return
 	}
@@ -77,10 +78,13 @@ func (v1hp *v1HostPortEndpoints) getHostPort(ctx *gin.Context) {
 
 	protocol := ctx.Query("protocol")
 	if protocol != "" {
-		query.Protocol.String = protocol
+		query.Protocol = protocol
+	} else {
+		// Assume TCP
+		query.Protocol = "tcp"
 	}
 
-	hostPorts, err := v1hp.Querier.GetHostPort(ctx, query)
+	hostPorts, err := e.Querier.GetHostPort(ctx, query)
 	if err != nil {
 		logrus.Errorf("could not get host port: %s", err)
 		ctx.AbortWithStatusJSON(http.StatusInternalServerError, &gin.H{
@@ -95,20 +99,19 @@ func (v1hp *v1HostPortEndpoints) getHostPort(ctx *gin.Context) {
 	})
 }
 
-func (v1hp *v1HostPortEndpoints) createHostPort(ctx *gin.Context) {
+func (e *v1HostPortEndpoints) createHostPort(ctx *gin.Context) {
 	if ok := assertContentTypeJson(ctx); !ok {
 		return
 	}
 
-	host, ok := extractHostFromPathParam(ctx, v1hp.ApiContext, "host_address")
+	host, ok := extractHostFromPathParam(ctx, e.ApiContext, "host_address")
 	if !ok {
 		return
 	}
 
 	hostPortParams := database.CreateHostPortParams{
-		Address:    host.Address,
-		Comments:   "",
-		Attributes: "{}",
+		Address:  host.Address,
+		Comments: "",
 	}
 	if err := ctx.BindJSON(&hostPortParams); err != nil {
 		logrus.Errorf("failed to bind host port details to database.CreateHostPortParams: %s", err)
@@ -119,7 +122,33 @@ func (v1hp *v1HostPortEndpoints) createHostPort(ctx *gin.Context) {
 		return
 	}
 
-	hostPort, err := v1hp.Querier.CreateHostPort(ctx, hostPortParams)
+	_, err := e.Querier.GetHostPort(ctx, database.GetHostPortParams{
+		Address:  host.Address,
+		Port:     hostPortParams.Port,
+		Protocol: hostPortParams.Protocol,
+	})
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		logrus.Errorf("failed to check if host port exists: %s", err)
+		ctx.AbortWithStatusJSON(http.StatusInternalServerError, &gin.H{
+			"message": ErrDatabaseLookup,
+			"error":   err.Error(),
+		})
+
+		return
+	} else if err == nil {
+		ctx.AbortWithStatusJSON(http.StatusConflict, &gin.H{
+			"message": fmt.Sprintf(
+				"host port already exists: %s:%d/%s",
+				host.Address,
+				hostPortParams.Port,
+				hostPortParams.Protocol,
+			),
+		})
+
+		return
+	}
+
+	hostPort, err := e.Querier.CreateHostPort(ctx, hostPortParams)
 	if err != nil {
 		logrus.Errorf("failed to create host port in database: %s", err)
 		ctx.AbortWithStatusJSON(http.StatusInternalServerError, &gin.H{
@@ -135,31 +164,31 @@ func (v1hp *v1HostPortEndpoints) createHostPort(ctx *gin.Context) {
 	})
 }
 
-func (v1hp *v1HostPortEndpoints) updateHostPort(ctx *gin.Context) {
+func (e *v1HostPortEndpoints) updateHostPort(ctx *gin.Context) {
 	if ok := assertContentTypeJson(ctx); !ok {
 		return
 	}
 
-	host, ok := extractHostFromPathParam(ctx, v1hp.ApiContext, "host_address")
+	host, ok := extractHostFromPathParam(ctx, e.ApiContext, "host_address")
 	if !ok {
 		return
 	}
 
-	portNumber, ok := v1hp.getPortNumberByPathParam(ctx)
+	portNumber, ok := e.getPortNumberByPathParam(ctx)
 	if !ok {
 		return
 	}
 
-	protocol, ok := v1hp.getProtocolByPathParam(ctx)
+	protocol, ok := e.getProtocolByPathParam(ctx)
 	if !ok {
 		return
 	}
 
 	// Load HostPort from database
-	hostPorts, err := v1hp.Querier.GetHostPort(ctx, database.GetHostPortParams{
+	hostPort, err := e.Querier.GetHostPort(ctx, database.GetHostPortParams{
 		Address:  host.Address,
 		Port:     portNumber,
-		Protocol: sql.NullString{String: protocol},
+		Protocol: protocol,
 	})
 	if err != nil {
 		logrus.Errorf("could not get host port: %s", err)
@@ -170,23 +199,11 @@ func (v1hp *v1HostPortEndpoints) updateHostPort(ctx *gin.Context) {
 		return
 	}
 
-	// With number and protocol, we should only have _one_ port
-	// Database constraints should prevent this from being more than one
-	// If zero, return 404
-	if len(hostPorts) == 0 {
-		ctx.AbortWithStatusJSON(http.StatusNotFound, &gin.H{
-			"message": "Host port not found",
-		})
-		return
-	}
-
-	hostPort := hostPorts[0]
 	hostPortUpdate := database.UpdateHostPortParams{
-		Address:    hostPort.Address,
-		Port:       hostPort.Port,
-		Protocol:   hostPort.Protocol,
-		Comments:   hostPort.Comments,
-		Attributes: hostPort.Attributes,
+		Address:  hostPort.Address,
+		Port:     hostPort.Port,
+		Protocol: hostPort.Protocol,
+		Comments: hostPort.Comments,
 	}
 	if err := ctx.BindJSON(&hostPortUpdate); err != nil {
 		logrus.Warnf("failed to bind host port details to database.UpdateHostPortParams: %s", err)
@@ -197,7 +214,7 @@ func (v1hp *v1HostPortEndpoints) updateHostPort(ctx *gin.Context) {
 		return
 	}
 
-	newHostPort, err := v1hp.Querier.UpdateHostPort(ctx, hostPortUpdate)
+	newHostPort, err := e.Querier.UpdateHostPort(ctx, hostPortUpdate)
 	if err != nil {
 		logrus.Errorf("failed to update host port record: %s", err)
 		ctx.AbortWithStatusJSON(http.StatusInternalServerError, &gin.H{
@@ -213,27 +230,27 @@ func (v1hp *v1HostPortEndpoints) updateHostPort(ctx *gin.Context) {
 	})
 }
 
-func (v1hp *v1HostPortEndpoints) deleteHostPort(ctx *gin.Context) {
-	host, ok := extractHostFromPathParam(ctx, v1hp.ApiContext, "host_address")
+func (e *v1HostPortEndpoints) deleteHostPort(ctx *gin.Context) {
+	host, ok := extractHostFromPathParam(ctx, e.ApiContext, "host_address")
 	if !ok {
 		return
 	}
 
-	portNumber, ok := v1hp.getPortNumberByPathParam(ctx)
+	portNumber, ok := e.getPortNumberByPathParam(ctx)
 	if !ok {
 		return
 	}
 
-	protocol, ok := v1hp.getProtocolByPathParam(ctx)
+	protocol, ok := e.getProtocolByPathParam(ctx)
 	if !ok {
 		return
 	}
 
 	// Load HostPort from database
-	hostPorts, err := v1hp.Querier.GetHostPort(ctx, database.GetHostPortParams{
+	hostPort, err := e.Querier.GetHostPort(ctx, database.GetHostPortParams{
 		Address:  host.Address,
 		Port:     portNumber,
-		Protocol: sql.NullString{String: protocol},
+		Protocol: protocol,
 	})
 	if err != nil {
 		logrus.Errorf("could not get host port: %s", err)
@@ -244,18 +261,7 @@ func (v1hp *v1HostPortEndpoints) deleteHostPort(ctx *gin.Context) {
 		return
 	}
 
-	// With number and protocol, we should only have _one_ port
-	// Database constraints should prevent this from being more than one
-	// If zero, return 404
-	if len(hostPorts) == 0 {
-		ctx.AbortWithStatusJSON(http.StatusNotFound, &gin.H{
-			"message": "Host port not found",
-		})
-		return
-	}
-
-	hostPort := hostPorts[0]
-	err = v1hp.Querier.DeleteHostPort(ctx, database.DeleteHostPortParams{
+	err = e.Querier.DeleteHostPort(ctx, database.DeleteHostPortParams{
 		Address:  hostPort.Address,
 		Port:     hostPort.Port,
 		Protocol: hostPort.Protocol,
@@ -279,7 +285,7 @@ func (v1hp *v1HostPortEndpoints) deleteHostPort(ctx *gin.Context) {
 // parameter helpers
 //
 
-func (v1hp *v1HostPortEndpoints) getPortNumberByPathParam(ctx *gin.Context) (int64, bool) {
+func (e *v1HostPortEndpoints) getPortNumberByPathParam(ctx *gin.Context) (int64, bool) {
 	portNumberStr := ctx.Param("number")
 	if portNumberStr == "" {
 		logrus.Debugf("empty `number` parameter provided")
@@ -301,7 +307,7 @@ func (v1hp *v1HostPortEndpoints) getPortNumberByPathParam(ctx *gin.Context) (int
 	return portNumber, true
 }
 
-func (v1hp *v1HostPortEndpoints) getProtocolByPathParam(ctx *gin.Context) (string, bool) {
+func (e *v1HostPortEndpoints) getProtocolByPathParam(ctx *gin.Context) (string, bool) {
 	protocol := ctx.Param("protocol")
 	if protocol == "" {
 		logrus.Debugf("empty `protocol` parameter provided")
