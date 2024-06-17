@@ -1,8 +1,9 @@
 package types
 
 import (
+	"github.com/pirogoeth/apps/pkg/search"
+
 	"github.com/pirogoeth/apps/maparoon/database"
-	"github.com/pirogoeth/apps/maparoon/search"
 )
 
 type ApiContext struct {

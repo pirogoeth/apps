@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/pirogoeth/apps/maparoon/client"
+	"github.com/pirogoeth/apps/maparoon/snmpsmi"
 	"github.com/pirogoeth/apps/maparoon/worker"
 	"github.com/pirogoeth/apps/pkg/system"
 )
@@ -29,6 +30,8 @@ func workerFunc(cmd *cobra.Command, args []string) {
 		DevMode:     false,
 		WorkerToken: cfg.Worker.Token,
 	})
+
+	snmpsmi.Init()
 
 	logrus.Infof("Starting worker...")
 

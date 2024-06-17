@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -22,19 +21,24 @@ import (
 )
 
 type worker struct {
-	apiClient *client.Client
-	cfg       *types.Config
+	apiClient    *client.Client
+	cfg          *types.Config
+	snmpGatherer *SnmpGatherer
 }
 
 func New(apiClient *client.Client, cfg *types.Config) *worker {
 	return &worker{
-		apiClient: apiClient,
-		cfg:       cfg,
+		apiClient:    apiClient,
+		cfg:          cfg,
+		snmpGatherer: NewSnmpGatherer(),
 	}
 }
 
 func (w *worker) Run(ctx context.Context) {
 	scanInterval := 5 * time.Second
+
+	go w.snmpGatherer.Run(ctx)
+
 	for {
 		select {
 		case <-time.After(scanInterval):
@@ -45,6 +49,8 @@ func (w *worker) Run(ctx context.Context) {
 
 			scanInterval = w.cfg.Worker.ScanInterval
 			logrus.Debugf("Setting next scan interval to %s", scanInterval)
+		case data := <-w.snmpGatherer.ReceiveChannel():
+			logrus.Debugf("Got SNMP data payload: %v", data)
 		case <-ctx.Done():
 			return
 		}
@@ -59,11 +65,11 @@ func (w *worker) findAndScanNetworks(ctx context.Context) error {
 
 	logrus.Debugf("Found %d networks, only scanning %d concurrently",
 		len(networks.Networks),
-		w.cfg.Worker.ConcurrentNetworkScanLimit,
+		w.cfg.Worker.Concurrent.NetworkScanLimit,
 	)
 
 	eg, _ := errgroup.WithContext(ctx)
-	eg.SetLimit(w.cfg.Worker.ConcurrentNetworkScanLimit)
+	eg.SetLimit(w.cfg.Worker.Concurrent.NetworkScanLimit)
 	for _, network := range networks.Networks {
 		network := network
 		eg.Go(func() error {
@@ -118,6 +124,8 @@ func (w *worker) startNetworkScanSingle(ctx context.Context, network database.Ne
 			if err := w.saveDiscoveredHost(ctx, network, res); err != nil {
 				logrus.Errorf("failed to receive host result: %s", err)
 			}
+
+			w.snmpGatherer.AddTarget(res.IP)
 		},
 	}
 
@@ -139,6 +147,8 @@ func (w *worker) startNetworkScanSingle(ctx context.Context, network database.Ne
 		logrus.Errorf("error while processing scan results: %s", err)
 		return err
 	}
+
+	// Nmap scan reader is done at this point, collate host results with SNMP gather?
 
 	return nil
 }
@@ -178,14 +188,4 @@ func (w *worker) saveDiscoveredHost(ctx context.Context, network database.Networ
 	}
 
 	return nil
-}
-
-type attributes map[string]string
-
-func mustJsonify(attrs attributes) string {
-	b, err := json.Marshal(attrs)
-	if err != nil {
-		panic(err)
-	}
-	return string(b)
 }

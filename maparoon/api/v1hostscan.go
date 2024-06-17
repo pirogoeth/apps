@@ -44,6 +44,14 @@ func (e *v1HostScanEndpoints) searchHostScans(ctx *gin.Context) {
 		return
 	}
 
+	limit, err := strconv.ParseInt(queryOr(ctx, "limit", "10"), 10, 64)
+	if err != nil {
+		ctx.AbortWithStatusJSON(http.StatusBadRequest, &gin.H{
+			"message": fmt.Sprintf("%s: %s", ErrInvalidParameter, "limit"),
+		})
+		return
+	}
+
 	fields := ctx.QueryArray("fields")
 	if len(fields) == 0 {
 		fields = []string{"*"}
@@ -63,6 +71,7 @@ func (e *v1HostScanEndpoints) searchHostScans(ctx *gin.Context) {
 	searchReq.Fields = fields
 	searchReq.Explain = explain
 	searchReq.Sort = sortOrder
+	searchReq.Size = int(limit)
 
 	results, err := handle.Search(searchReq)
 	if err != nil {
@@ -136,10 +145,11 @@ func (e *v1HostScanEndpoints) createHostScans(ctx *gin.Context) {
 	batch := handle.Index().NewBatch()
 	for _, hostScan := range req.HostScans {
 		batch.Index(hostScan.Address, &types.HostScanDocument{
-			Address:       hostScan.Address,
-			Network:       network,
-			HostDetails:   hostScan.HostDetails,
-			ScriptDetails: hostScan.ScriptDetails,
+			Address:          hostScan.Address,
+			FingerprintPorts: hostScan.FingerprintPorts,
+			HostDetails:      hostScan.HostDetails,
+			ServicePorts:     hostScan.ServicePorts,
+			Network:          network,
 		})
 	}
 

@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/blevesearch/bleve"
+	bleveMapping "github.com/blevesearch/bleve/mapping"
 	"github.com/gin-gonic/gin"
 	"github.com/pirogoeth/apps/maparoon/api"
 	"github.com/pirogoeth/apps/maparoon/database"
-	"github.com/pirogoeth/apps/maparoon/search"
 	"github.com/pirogoeth/apps/maparoon/types"
+	"github.com/pirogoeth/apps/pkg/search"
 	"github.com/pirogoeth/apps/pkg/system"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -37,7 +39,10 @@ func serveFunc(cmd *cobra.Command, args []string) {
 		panic(fmt.Errorf("could not start (database): %w", err))
 	}
 
-	searcher, err := search.NewBleveSearcher(cfg.Search.IndexDir)
+	searcher, err := search.NewSearcher(search.SearcherOpts{
+		IndexDir:     cfg.Search.IndexDir,
+		IndexMapping: createSearchIndexMapping(),
+	})
 	if err != nil {
 		panic(fmt.Errorf("could not start (indexer): %w", err))
 	}
@@ -66,4 +71,21 @@ func serveFunc(cmd *cobra.Command, args []string) {
 		return nil
 	})
 	sw.Wait(ctx, cancel)
+}
+
+func createSearchIndexMapping() bleveMapping.IndexMapping {
+	osMapping := bleve.NewDocumentMapping()
+	osMapping.AddSubDocumentMapping("portsused", bleve.NewDocumentDisabledMapping())
+
+	hostMapping := bleve.NewDocumentMapping()
+	hostMapping.AddSubDocumentMapping("ports", bleve.NewDocumentDisabledMapping())
+	hostMapping.AddSubDocumentMapping("os", osMapping)
+
+	docMapping := bleve.NewDocumentMapping()
+	docMapping.AddSubDocumentMapping("host", hostMapping)
+
+	indexMapping := bleve.NewIndexMapping()
+	indexMapping.AddDocumentMapping("_default", docMapping)
+
+	return indexMapping
 }

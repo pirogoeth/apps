@@ -51,11 +51,12 @@ func NewBleveSearcher(indexDir string) (*BleveSearcher, error) {
 }
 
 func createBleveIndex(indexPath string) (bleve.Index, error) {
-	portsMapping := bleve.NewDocumentMapping()
-	portsMapping.AddSubDocumentMapping("scripts", bleve.NewDocumentDisabledMapping())
+	osMapping := bleve.NewDocumentMapping()
+	osMapping.AddSubDocumentMapping("portsused", bleve.NewDocumentDisabledMapping())
 
 	hostMapping := bleve.NewDocumentMapping()
-	hostMapping.AddSubDocumentMapping("ports", portsMapping)
+	hostMapping.AddSubDocumentMapping("ports", bleve.NewDocumentDisabledMapping())
+	hostMapping.AddSubDocumentMapping("os", osMapping)
 
 	docMapping := bleve.NewDocumentMapping()
 	docMapping.AddSubDocumentMapping("host", hostMapping)

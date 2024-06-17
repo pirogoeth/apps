@@ -76,6 +76,8 @@ func (w *worker) parseNmapResults(ctx context.Context, network database.Network,
 
 				if len(nmaprun.Hosts) > 0 {
 					logrus.Debugf("Decoded nmaprun with %d hosts", len(nmaprun.Hosts))
+					// TODO(seanj): Break down result into individual host chunks and send through a "collation" channel
+					// to be combined with SNMP gather data
 					return w.indexHostScans(ctx, network, nmaprun)
 				}
 
@@ -98,9 +100,10 @@ func (w *worker) indexHostScans(ctx context.Context, network database.Network, r
 	hostScans := make([]types.HostScan, 0, len(run.Hosts))
 	for _, host := range run.Hosts {
 		hostScans = append(hostScans, types.HostScan{
-			Address:       host.Addresses[0].Addr,
-			HostDetails:   host,
-			ScriptDetails: flattenScriptDetails(host),
+			Address:          host.Addresses[0].Addr,
+			FingerprintPorts: unrollOsPortsUsed(host.Os.PortsUsed),
+			HostDetails:      host,
+			ServicePorts:     unrollServicePorts(host.Ports),
 		})
 	}
 
@@ -118,41 +121,37 @@ func (w *worker) indexHostScans(ctx context.Context, network database.Network, r
 	return nil
 }
 
-func flattenScriptDetails(nmapHost nmap.Host) map[string]interface{} {
+func unrollScriptDetails(scripts []nmap.Script) map[string]interface{} {
 	scriptDetails := make(map[string]interface{})
-	for _, port := range nmapHost.Ports {
-		portLevel := make(map[string]interface{})
-		scriptDetails[fmt.Sprintf("%d", port.PortId)] = portLevel
 
-		for _, script := range port.Scripts {
-			scriptLevel := make(map[string]interface{})
-			if script.Elements != nil {
-				if len(script.Elements) == 1 && script.Elements[0].Key == "" {
-					scriptLevel["_output"] = script.Elements[0].Value
-					continue
-				}
-
-				for _, elem := range script.Elements {
-					scriptLevel[elem.Key] = elem.Value
-				}
+	for _, script := range scripts {
+		scriptLevel := make(map[string]interface{})
+		if script.Elements != nil {
+			if len(script.Elements) == 1 && script.Elements[0].Key == "" {
+				scriptLevel["_output"] = script.Elements[0].Value
+				continue
 			}
 
-			if script.Tables != nil {
-				for idx, table := range script.Tables {
-					key := fmt.Sprintf("%d", idx)
-					if table.Key != "" {
-						key = table.Key
-					}
-					scriptLevel[key] = recurseTable(table)
-				}
+			for _, elem := range script.Elements {
+				scriptLevel[elem.Key] = elem.Value
 			}
+		}
 
-			if script.Elements == nil && script.Tables == nil {
-				portLevel[script.Id] = script.Output
-			} else {
-				scriptLevel["_output"] = script.Output
-				portLevel[script.Id] = scriptLevel
+		if script.Tables != nil {
+			for idx, table := range script.Tables {
+				key := fmt.Sprintf("%d", idx)
+				if table.Key != "" {
+					key = table.Key
+				}
+				scriptLevel[key] = recurseTable(table)
 			}
+		}
+
+		if script.Elements == nil && script.Tables == nil {
+			scriptDetails[script.Id] = script.Output
+		} else {
+			scriptLevel["_output"] = script.Output
+			scriptDetails[script.Id] = scriptLevel
 		}
 	}
 
@@ -178,4 +177,34 @@ func recurseTable(table nmap.Table) map[string]interface{} {
 	}
 
 	return tableMap
+}
+
+func unrollOsPortsUsed(portsUsed []nmap.PortUsed) map[string]interface{} {
+	usedPorts := make(map[string]interface{})
+	for _, port := range portsUsed {
+		portDetails := make(map[string]interface{})
+		portDetails["state"] = port.State
+		portDetails["protocol"] = port.Proto
+
+		usedPorts[fmt.Sprintf("%d", port.PortId)] = portDetails
+	}
+
+	return usedPorts
+}
+
+func unrollServicePorts(ports []nmap.Port) map[string]interface{} {
+	servicePorts := make(map[string]interface{})
+
+	for _, port := range ports {
+		portDetails := make(map[string]interface{})
+		portDetails["protocol"] = port.Protocol
+		portDetails["state"] = port.State
+		portDetails["owner"] = port.Owner
+		portDetails["service"] = port.Service
+		portDetails["scripts"] = unrollScriptDetails(port.Scripts)
+
+		servicePorts[fmt.Sprintf("%d", port.PortId)] = portDetails
+	}
+
+	return servicePorts
 }
