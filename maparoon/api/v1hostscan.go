@@ -44,7 +44,7 @@ func (e *v1HostScanEndpoints) searchHostScans(ctx *gin.Context) {
 		return
 	}
 
-	limit, err := strconv.ParseInt(queryOr(ctx, "limit", "10"), 10, 64)
+	limit, err := strconv.ParseInt(queryOr(ctx, "limit", "10"), 10, 32)
 	if err != nil {
 		ctx.AbortWithStatusJSON(http.StatusBadRequest, &gin.H{
 			"message": fmt.Sprintf("%s: %s", ErrInvalidParameter, "limit"),
