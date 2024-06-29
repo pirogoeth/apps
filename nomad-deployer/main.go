@@ -20,7 +20,7 @@ type App struct {
 }
 
 func main() {
-	logging.Setup()
+	logging.Setup(logging.WithAppName("nomad-deployer"))
 
 	cfg, err := config.Load[types.Config]()
 	if err != nil {

@@ -1,6 +1,7 @@
-go 1.21.5
+go 1.22.3
 
 use (
+	./maparoon
 	./nomad-deployer
 	./nomad-event-stream
 	./nomad-external-dns

@@ -2,7 +2,7 @@ FROM golang:alpine AS build
 
 COPY . /src
 WORKDIR /src
-RUN go build -o /nomad-event-stream ./nomad-event-stream/...
+RUN go build -o /nomad-event-stream ./nomad-event-stream
 
 # ---
 

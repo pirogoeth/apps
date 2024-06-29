@@ -41,7 +41,8 @@ type App struct {
 }
 
 func main() {
-	logging.Setup()
+	logging.Setup(logging.WithAppName("nomad-service-cleaner"))
+
 	prometheus.MustRegister(
 		metricDanglingServicesCleaned,
 		metricDanglingServicesFound,
@@ -50,7 +51,7 @@ func main() {
 
 	cfg, err := config.Load[Config]()
 	if err != nil {
-		logrus.Fatalf("could not start (config): %w", err)
+		logrus.Fatalf("could not start (config): %s", err)
 	}
 
 	app := &App{cfg}

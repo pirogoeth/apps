@@ -52,7 +52,7 @@ type App struct {
 }
 
 func main() {
-	logging.Setup()
+	logging.Setup(logging.WithAppName("nomad-event-stream"))
 
 	cfg, err := config.Load[appCfg.Config]()
 	if err != nil {

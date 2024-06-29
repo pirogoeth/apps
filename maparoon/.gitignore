@@ -1,0 +1,6 @@
+maparoon.db
+maparoon
+populate.sh
+.nfs*
+database/queries.sql
+index/index.bleve
