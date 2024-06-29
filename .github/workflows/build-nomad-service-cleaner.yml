@@ -26,3 +26,6 @@ jobs:
       output-registry: "ghcr.io"
       output-repository-path: "${{ github.repository }}/nomad-service-cleaner"
       dockerfile-path: "./nomad-service-cleaner/Dockerfile"
+    permissions:
+      contents: read
+      packages: write

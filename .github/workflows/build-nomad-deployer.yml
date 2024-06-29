@@ -26,3 +26,6 @@ jobs:
       output-registry: "ghcr.io"
       output-repository-path: "${{ github.repository }}/nomad-deployer"
       dockerfile-path: "./nomad-deployer/Dockerfile"
+    permissions:
+      contents: read
+      packages: write

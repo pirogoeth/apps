@@ -26,3 +26,6 @@ jobs:
       output-registry: "ghcr.io"
       output-repository-path: "${{ github.repository }}/nomad-event-stream"
       dockerfile-path: "./nomad-event-stream/Dockerfile"
+    permissions:
+      contents: read
+      packages: write
