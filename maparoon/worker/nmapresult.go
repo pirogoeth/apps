@@ -16,11 +16,18 @@ import (
 	"github.com/pirogoeth/apps/maparoon/types"
 )
 
-func (w *worker) processScanResults(ctx context.Context, network database.Network, scanPipe string, scanDoneCh chan bool) error {
-	defer logrus.Debugf("Finished processing nmap results from %s", scanPipe)
+type nmapScanProcessor struct {
+	network          database.Network
+	scanPipe         string
+	scanDoneCh       chan bool
+	nmapHostResultCh chan types.NmapHostScan
+}
+
+func (nsp *nmapScanProcessor) ProcessResults(ctx context.Context) error {
+	defer logrus.Debugf("Finished processing nmap results from %s", nsp.scanPipe)
 
 	fd, err := unix.Open(
-		scanPipe,
+		nsp.scanPipe,
 		unix.O_RDONLY|unix.O_EXCL|unix.O_NONBLOCK,
 		0660,
 	)
@@ -28,7 +35,7 @@ func (w *worker) processScanResults(ctx context.Context, network database.Networ
 		return fmt.Errorf("could not open fifo for reading: %w", err)
 	}
 
-	f := os.NewFile(uintptr(fd), scanPipe)
+	f := os.NewFile(uintptr(fd), nsp.scanPipe)
 	defer f.Close()
 
 	stillReading := true
@@ -43,7 +50,7 @@ func (w *worker) processScanResults(ctx context.Context, network database.Networ
 		}
 
 		select {
-		case <-scanDoneCh:
+		case <-nsp.scanDoneCh:
 			stillReading = false
 		case <-ctx.Done():
 			return fmt.Errorf("context done while reading from nmap result pipe")
@@ -52,11 +59,11 @@ func (w *worker) processScanResults(ctx context.Context, network database.Networ
 		}
 	}
 
-	return w.parseNmapResults(ctx, network, contentsBuf)
+	return nsp.parseResults(ctx, contentsBuf)
 }
 
-func (w *worker) parseNmapResults(ctx context.Context, network database.Network, resultsBuf *bytes.Buffer) error {
-	defer logrus.Debugf("Finished parsing nmap results for network %s", network.Name)
+func (nsp *nmapScanProcessor) parseResults(ctx context.Context, resultsBuf *bytes.Buffer) error {
+	defer logrus.Debugf("Finished parsing nmap results for network %s", nsp.network.Name)
 
 	decoder := xml.NewDecoder(resultsBuf)
 	for {
@@ -76,9 +83,7 @@ func (w *worker) parseNmapResults(ctx context.Context, network database.Network,
 
 				if len(nmaprun.Hosts) > 0 {
 					logrus.Debugf("Decoded nmaprun with %d hosts", len(nmaprun.Hosts))
-					// TODO(seanj): Break down result into individual host chunks and send through a "collation" channel
-					// to be combined with SNMP gather data
-					return w.indexHostScans(ctx, network, nmaprun)
+					return nsp.returnScanResults(nmaprun)
 				}
 
 				return nil
@@ -96,27 +101,17 @@ func (w *worker) parseNmapResults(ctx context.Context, network database.Network,
 	return nil
 }
 
-func (w *worker) indexHostScans(ctx context.Context, network database.Network, run nmap.NmapRun) error {
-	hostScans := make([]types.HostScan, 0, len(run.Hosts))
+func (nsp *nmapScanProcessor) returnScanResults(run nmap.NmapRun) error {
 	for _, host := range run.Hosts {
-		hostScans = append(hostScans, types.HostScan{
-			Address:          host.Addresses[0].Addr,
-			FingerprintPorts: unrollOsPortsUsed(host.Os.PortsUsed),
-			HostDetails:      host,
-			ServicePorts:     unrollServicePorts(host.Ports),
-		})
+		nsp.nmapHostResultCh <- types.NmapHostScan{
+			Address: host.Addresses[0].Addr,
+			NmapHostScanDocument: types.NmapHostScanDocument{
+				FingerprintPorts: unrollOsPortsUsed(host.Os.PortsUsed),
+				HostDetails:      host,
+				ServicePorts:     unrollServicePorts(host.Ports),
+			},
+		}
 	}
-
-	resp, err := w.apiClient.CreateHostScans(ctx, types.CreateHostScansRequest{
-		HostScans: hostScans,
-		NetworkId: network.ID,
-	})
-	if err != nil {
-		logrus.Errorf("could not index host scans for network %s: %s", network.Name, err.Error())
-		return err
-	}
-
-	logrus.Debugf("host scans response: %s", resp.Message)
 
 	return nil
 }

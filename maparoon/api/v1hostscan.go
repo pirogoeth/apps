@@ -145,11 +145,10 @@ func (e *v1HostScanEndpoints) createHostScans(ctx *gin.Context) {
 	batch := handle.Index().NewBatch()
 	for _, hostScan := range req.HostScans {
 		batch.Index(hostScan.Address, &types.HostScanDocument{
-			Address:          hostScan.Address,
-			FingerprintPorts: hostScan.FingerprintPorts,
-			HostDetails:      hostScan.HostDetails,
-			ServicePorts:     hostScan.ServicePorts,
-			Network:          network,
+			Address: hostScan.Address,
+			Network: network,
+			Nmap:    hostScan.Nmap,
+			Snmp:    hostScan.Snmp,
 		})
 	}
 

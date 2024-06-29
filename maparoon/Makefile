@@ -1,6 +1,6 @@
 sqlc_generated := database/db.go database/models.go database/queries.sql database/queries.sql.go
 
-maparoon: **/*.go $(sqlc_generated) snmpsmi/mibs/*.txt
+maparoon: **/*.go $(sqlc_generated) snmpsmi/netSnmpMibs/*.txt
 	go build $(buildargs) ./
 
 $(sqlc_generated): sqlc.yml database/queries/*.sql database/schema.sql
@@ -8,7 +8,7 @@ $(sqlc_generated): sqlc.yml database/queries/*.sql database/schema.sql
 	sqlc vet
 	sqlc generate
 
-snmpsmi/mibs/*.txt:
+snmpsmi/netSnmpMibs/*.txt snmpsmi/juniperMibs/*.txt:
 	bash scripts/collect-mibs.sh
 
 .PHONY: run-debug-api
@@ -27,7 +27,7 @@ sudo-run-debug-worker: maparoon
 clean:
 	rm -f maparoon
 	rm -f $(sqlc_generated)
-	rm -f snmpsmi/mibs/*.txt
+	rm -f snmpsmi/netSnmpMibs/*.txt
 
 .PHONY: clean-data
 clean-data:

@@ -27,5 +27,9 @@ type Config struct {
 			IndexLimit       int `json:"index_limit" envconfig:"CONCURRENT_INDEX_LIMIT" default:"4"`
 			NetworkScanLimit int `json:"network_scan_limit" envconfig:"CONCURRENT_NET_SCAN_LIMIT" default:"2"`
 		} `json:"concurrent"`
+
+		Snmp struct {
+			Community string `json:"community" envconfig:"SNMP_COMMUNITY" default:"public"`
+		}
 	} `json:"worker"`
 }

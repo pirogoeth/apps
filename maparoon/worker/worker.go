@@ -12,6 +12,7 @@ import (
 	naabuResult "github.com/projectdiscovery/naabu/v2/pkg/result"
 	naabuRunner "github.com/projectdiscovery/naabu/v2/pkg/runner"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/exp/maps"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
 
@@ -21,23 +22,19 @@ import (
 )
 
 type worker struct {
-	apiClient    *client.Client
-	cfg          *types.Config
-	snmpGatherer *SnmpGatherer
+	apiClient *client.Client
+	cfg       *types.Config
 }
 
 func New(apiClient *client.Client, cfg *types.Config) *worker {
 	return &worker{
-		apiClient:    apiClient,
-		cfg:          cfg,
-		snmpGatherer: NewSnmpGatherer(),
+		apiClient: apiClient,
+		cfg:       cfg,
 	}
 }
 
 func (w *worker) Run(ctx context.Context) {
 	scanInterval := 5 * time.Second
-
-	go w.snmpGatherer.Run(ctx)
 
 	for {
 		select {
@@ -49,8 +46,6 @@ func (w *worker) Run(ctx context.Context) {
 
 			scanInterval = w.cfg.Worker.ScanInterval
 			logrus.Debugf("Setting next scan interval to %s", scanInterval)
-		case data := <-w.snmpGatherer.ReceiveChannel():
-			logrus.Debugf("Got SNMP data payload: %v", data)
 		case <-ctx.Done():
 			return
 		}
@@ -84,9 +79,17 @@ func (w *worker) findAndScanNetworks(ctx context.Context) error {
 	return nil
 }
 
-func (w *worker) startNetworkScanSingle(ctx context.Context, network database.Network) error {
+func (w *worker) startNetworkScanSingle(pCtx context.Context, network database.Network) error {
 	logrus.Debugf("Scanning network %s", network.Name)
 	defer logrus.Debugf("Finished scanning network %s", network.Name)
+
+	ctx, cancel := context.WithCancel(pCtx)
+	defer cancel()
+
+	snmpGatherer := NewSnmpGatherer(&SnmpGathererOpts{
+		Community: w.cfg.Worker.Snmp.Community,
+	})
+	go snmpGatherer.Run(ctx)
 
 	scansDir := path.Join(os.TempDir(), "maparoon")
 	if err := os.MkdirAll(scansDir, 0750); err != nil {
@@ -102,14 +105,28 @@ func (w *worker) startNetworkScanSingle(ctx context.Context, network database.Ne
 		return fmt.Errorf("could not create fifo for nmap scan: %w", err)
 	}
 
+	networkSize, err := network.NetworkSize()
+	if err != nil {
+		return fmt.Errorf("could not calculate network size: %w", err)
+	}
+
+	logrus.Debugf("Creating nmap result channel with buffer size %d", networkSize)
+	nmapHostResultCh := make(chan types.NmapHostScan, networkSize)
+
 	scanDoneCh := make(chan bool)
 	procEg, _ := errgroup.WithContext(ctx)
 	procEg.Go(func() error {
-		return w.processScanResults(ctx, network, scanPipe, scanDoneCh)
+		nsp := &nmapScanProcessor{
+			network,
+			scanPipe,
+			scanDoneCh,
+			nmapHostResultCh,
+		}
+		return nsp.ProcessResults(ctx)
 	})
 
 	options := naabuRunner.Options{
-		Host:       goflags.StringSlice{fmt.Sprintf("%s/%d", network.Address, network.Cidr)},
+		Host:       goflags.StringSlice{network.CidrString()},
 		ScanType:   "c",
 		Silent:     true,
 		Ping:       true,
@@ -121,11 +138,11 @@ func (w *worker) startNetworkScanSingle(ctx context.Context, network database.Ne
 		Output:     "/dev/null",
 		OnResult: func(res *naabuResult.HostResult) {
 			logrus.Debugf("Found host %s", res.IP)
-			if err := w.saveDiscoveredHost(ctx, network, res); err != nil {
+			if err := w.saveDiscoveredHost(pCtx, network, res); err != nil {
 				logrus.Errorf("failed to receive host result: %s", err)
 			}
 
-			w.snmpGatherer.AddTarget(res.IP)
+			snmpGatherer.AddTarget(res.IP)
 		},
 	}
 
@@ -148,7 +165,44 @@ func (w *worker) startNetworkScanSingle(ctx context.Context, network database.Ne
 		return err
 	}
 
-	// Nmap scan reader is done at this point, collate host results with SNMP gather?
+	// Nmap scan reader is done here, collate host results with SNMP gather?
+	hostScanResults := make(map[string]*types.HostScanDocument)
+	pendingNmapResults := networkSize
+	pendingSnmpResults := networkSize
+	for pendingNmapResults > 0 || pendingSnmpResults > 0 {
+		select {
+		case nmapResult := <-nmapHostResultCh:
+			if _, ok := hostScanResults[nmapResult.Address]; !ok {
+				hostScanResults[nmapResult.Address] = new(types.HostScanDocument)
+				hostScanResults[nmapResult.Address].Address = nmapResult.Address
+				hostScanResults[nmapResult.Address].Network = network
+			}
+			hostScanResults[nmapResult.Address].Nmap = &nmapResult.NmapHostScanDocument
+			pendingNmapResults -= 1
+		case snmpResult := <-snmpGatherer.ReceiveChannel():
+			if _, ok := hostScanResults[snmpResult.Address]; !ok {
+				hostScanResults[snmpResult.Address] = new(types.HostScanDocument)
+				hostScanResults[snmpResult.Address].Address = snmpResult.Address
+				hostScanResults[snmpResult.Address].Network = network
+			}
+			hostScanResults[snmpResult.Address].Snmp = &snmpResult.SnmpHostScanDocument
+			pendingSnmpResults -= 1
+		case <-time.After(1 * time.Second):
+			logrus.Debugf("pending worker results [nmap/snmp]: %d/%d", pendingNmapResults, pendingSnmpResults)
+		}
+	}
+
+	scanDocs := maps.Values(hostScanResults)
+	resp, err := w.apiClient.CreateHostScans(ctx, types.CreateHostScansRequest{
+		HostScans: scanDocs,
+		NetworkId: network.ID,
+	})
+	if err != nil {
+		logrus.Errorf("could not index host scans for network %s: %s", network.Name, err.Error())
+		return err
+	}
+
+	logrus.Debugf("host scans response: %s", resp.Message)
 
 	return nil
 }

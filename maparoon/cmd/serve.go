@@ -81,8 +81,11 @@ func createSearchIndexMapping() bleveMapping.IndexMapping {
 	hostMapping.AddSubDocumentMapping("ports", bleve.NewDocumentDisabledMapping())
 	hostMapping.AddSubDocumentMapping("os", osMapping)
 
+	nmapMapping := bleve.NewDocumentMapping()
+	nmapMapping.AddSubDocumentMapping("host", hostMapping)
+
 	docMapping := bleve.NewDocumentMapping()
-	docMapping.AddSubDocumentMapping("host", hostMapping)
+	docMapping.AddSubDocumentMapping("nmap", nmapMapping)
 
 	indexMapping := bleve.NewIndexMapping()
 	indexMapping.AddDocumentMapping("_default", docMapping)
