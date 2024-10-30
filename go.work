@@ -1,9 +1,11 @@
-go 1.22.3
+go 1.23.2
 
 use (
+	./email-archiver
 	./maparoon
 	./nomad-deployer
 	./nomad-event-stream
 	./nomad-external-dns
 	./nomad-service-cleaner
+	./tf-flight-recorder
 )

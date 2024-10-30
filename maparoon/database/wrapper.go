@@ -11,7 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-//go:embed schema.sql
+// go:embed schema.sql
 var dbSchema string
 
 var _ io.Closer = (*DbWrapper)(nil)

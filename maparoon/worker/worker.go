@@ -34,6 +34,10 @@ func New(apiClient *client.Client, cfg *types.Config) *worker {
 }
 
 func (w *worker) Run(ctx context.Context) {
+	nextScanInterval, err := time.ParseDuration(w.cfg.Worker.ScanInterval)
+	if err != nil {
+		panic(fmt.Errorf("could not parse scan interval: %w", err))
+	}
 	scanInterval := 5 * time.Second
 
 	for {
@@ -44,7 +48,7 @@ func (w *worker) Run(ctx context.Context) {
 				logrus.Errorf("encountered error during scan: %s", err.Error())
 			}
 
-			scanInterval = w.cfg.Worker.ScanInterval
+			scanInterval = nextScanInterval
 			logrus.Debugf("Setting next scan interval to %s", scanInterval)
 		case <-ctx.Done():
 			return
