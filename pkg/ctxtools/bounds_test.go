@@ -28,7 +28,7 @@ func TestBoundedBy(t *testing.T) {
 		}
 	})
 
-	t.Run("child context is not cancelled if parent context is cancelled first", func(t *testing.T) {
+	t.Run("child context is cancelled when parent context is cancelled", func(t *testing.T) {
 		parentCtx, parentCancel := context.WithCancel(context.Background())
 		upperBoundCtx := context.Background()
 
@@ -47,7 +47,7 @@ func TestBoundedBy(t *testing.T) {
 			t.Error("child context should have been cancelled when parent context was cancelled")
 		}
 
-		// Verify that cancelling the parent did not affect other contexts created with the same upper bound
+		// Verify that cancelling one parent context does not affect other contexts created with the same upper bound
 		newParentCtx := context.Background()
 		newChildCtx := BoundedBy(newParentCtx, upperBoundCtx)
 
