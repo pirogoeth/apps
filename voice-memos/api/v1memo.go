@@ -127,11 +127,12 @@ func (e *v1MemoEndpoints) createMemo(ctx *gin.Context) {
 	}
 
 	mimeType := magic.MimeFromBytes(fileContents)
-	extensions, err := mime.ExtensionsByType(mimeType)
+	logrus.Debugf("Magic returns mimetype %s", mimeType)
 
 	var extension string
-	if err != nil {
-		logrus.Errorf("could not load extension for mimetype %s, defaulting to `.bin`", mimeType)
+	extensions, err := mime.ExtensionsByType(mimeType)
+	if err != nil || len(extensions) == 0 {
+		logrus.Errorf("could not load extension for mimetype %s, defaulting to `.bin` (err %s)", mimeType, err)
 		extension = ".bin"
 	} else {
 		extension = extensions[0]
