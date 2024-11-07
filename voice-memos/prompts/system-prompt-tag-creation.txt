@@ -1,0 +1,11 @@
+Goal:
+Use the provided functions to apply concrete tags to a transcribed voice memo or suggest new tags for improving categorization.
+
+Inputs:
+- Transcribed memo text
+- YAML-formatted list of existing tags
+
+Outputs:
+Only output function calls, do not provide any free-form exposition.
+Output as many function calls as you feel is needed to tag the memo.
+Suggest tags as needed, as long as the tags are reasonably broad and fit into best-practice categorization/organization schemes.

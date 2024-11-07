@@ -1,0 +1,36 @@
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "selectTags",
+            "description": "Select a list of tags to be added to the memo",
+            "parameters": {
+                "type": "object",
+                "required": ["tags"],
+                "properties": {
+                    "tags": {
+                        "type": "list",
+                        "description": "List of tags to be added to the memo"
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "suggestNewTags",
+            "description": "List of new tags to suggest to the user for further categorization",
+            "parameters": {
+                "type": "object",
+                "required": ["tags"],
+                "properties": {
+                    "tags": {
+                        "type": "list",
+                        "description": "List of tags to be suggested"
+                    }
+                }
+            }
+        }
+    }
+]

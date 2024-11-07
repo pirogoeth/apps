@@ -1,0 +1,31 @@
+---
+
+name: Build voice-memos app
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*.**" ]
+    paths:
+    - ".github/workflows/build-voice-memos.yml"
+    - "go.*"
+    - "pkg/**"
+    - "voice-memos/**"
+  pull_request:
+    branches: [ "main" ]
+    paths:
+    - ".github/workflows/build-voice-memos.yml"
+    - "go.*"
+    - "pkg/**"
+    - "voice-memos/**"
+
+jobs:
+  build-docker-image:
+    uses: pirogoeth/workflows/.github/workflows/docker-generic.yml@main
+    with:
+      output-registry: "ghcr.io"
+      output-repository-path: "${{ github.repository }}/voice-memos"
+      dockerfile-path: "./voice-memos/Dockerfile"
+    permissions:
+      contents: read
+      packages: write

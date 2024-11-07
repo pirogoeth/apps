@@ -1,4 +1,4 @@
-go 1.22.3
+go 1.23.2
 
 use (
 	./maparoon
@@ -6,4 +6,5 @@ use (
 	./nomad-event-stream
 	./nomad-external-dns
 	./nomad-service-cleaner
+	./voice-memos
 )
