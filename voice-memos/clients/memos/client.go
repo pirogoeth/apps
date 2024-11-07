@@ -5,13 +5,14 @@ import (
 	"crypto/x509"
 	"fmt"
 
-	"github.com/pirogoeth/apps/voice-memos/types"
 	"github.com/sirupsen/logrus"
 	memosV1pb "github.com/usememos/memos/proto/gen/api/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+
+	"github.com/pirogoeth/apps/voice-memos/types"
 )
 
 type Client struct {
