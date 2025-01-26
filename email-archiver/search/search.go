@@ -30,7 +30,10 @@ func (s *Searcher) Close() error {
 		}
 	}
 
-	return fmt.Errorf("not implemented")
+	if errs.Len() > 0 {
+		return errs
+	}
+	return nil
 }
 
 func New(cfg *config.SearchConfig) (*Searcher, error) {
