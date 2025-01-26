@@ -30,6 +30,19 @@ func (s *Searcher) Close() error {
 		}
 	}
 
+	// Write the search catalog to file
+	catalogFilePath := filepath.Join(cfg.Index.BaseDir, "catalog.json")
+	catalogFile, err := os.Create(catalogFilePath)
+	if err != nil {
+		errs.Add(fmt.Errorf("could not create search index catalog file: %w", err))
+	} else {
+		defer catalogFile.Close()
+		encoder := json.NewEncoder(catalogFile)
+		if err := encoder.Encode(s.searchCatalog); err != nil {
+			errs.Add(fmt.Errorf("could not write search index catalog: %w", err))
+		}
+	}
+
 	return errs.ToError()
 }
 
