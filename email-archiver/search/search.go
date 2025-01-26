@@ -30,11 +30,7 @@ func (s *Searcher) Close() error {
 		}
 	}
 
-	if err := errs.ToError(); err != nil {
-		return err
-	}
-
-	return nil
+	return errs.ToError()
 }
 
 func New(cfg *config.SearchConfig) (*Searcher, error) {
