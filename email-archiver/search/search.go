@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/pirogoeth/apps/email-archiver/config"
+	appsErrors "github.com/pirogoeth/apps/pkg/errors"
 	"github.com/pirogoeth/apps/pkg/search"
 )
 
@@ -22,6 +23,13 @@ type Searcher struct {
 }
 
 func (s *Searcher) Close() error {
+	errs := new(appsErrors.MultiError)
+	for timeRange, searcher := range s.searchers {
+		if err := searcher.Close(); err != nil {
+			errs.Add(fmt.Errorf("could not close searcher for time range %v: %w", timeRange, err))
+		}
+	}
+
 	return fmt.Errorf("not implemented")
 }
 
