@@ -1,4 +1,8 @@
-email-archiver: **/*.go
+.PHONY: test
+test:
+	go test ./...
+
+email-archiver: test **/*.go
 	go build $(buildargs) ./
 
 .PHONY: run-debug-api
