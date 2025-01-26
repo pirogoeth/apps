@@ -33,6 +33,7 @@ func (s *Searcher) Close() error {
 	if errs.Len() > 0 {
 		return errs
 	}
+
 	return nil
 }
 
