@@ -30,8 +30,8 @@ func (s *Searcher) Close() error {
 		}
 	}
 
-	if errs.Len() > 0 {
-		return errs
+	if err := errs.ToError(); err != nil {
+		return err
 	}
 
 	return nil

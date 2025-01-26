@@ -15,7 +15,7 @@ func (m *MultiError) Add(err error) {
 	m.errs = append(m.errs, err)
 }
 
-func (m *MultiError) AsError() error {
+func (m *MultiError) ToError() error {
 	if len(m.errs) > 0 {
 		return m
 	}
