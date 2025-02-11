@@ -16,16 +16,16 @@ const (
 	FieldComponent = "component"
 )
 
-type mod func(*logrus.Entry) error
+type Mod func(*logrus.Entry) error
 
-func WithAppName(appName string) mod {
+func WithAppName(appName string) Mod {
 	return func(e *logrus.Entry) error {
 		e.Data[FieldAppname] = appName
 		return nil
 	}
 }
 
-func WithComponentName(component string) mod {
+func WithComponentName(component string) Mod {
 	return func(e *logrus.Entry) error {
 		e.Data[FieldComponent] = component
 		return nil
@@ -33,7 +33,7 @@ func WithComponentName(component string) mod {
 }
 
 type hookWrapper struct {
-	mods []mod
+	mods []Mod
 }
 
 var _ logrus.Hook = (*hookWrapper)(nil)
@@ -52,7 +52,7 @@ func (h *hookWrapper) Fire(entry *logrus.Entry) error {
 	return nil
 }
 
-func Setup(mods ...mod) {
+func Setup(mods ...Mod) {
 	logLevel, err := logrus.ParseLevel(os.Getenv("LOG_LEVEL"))
 	if err != nil {
 		logLevel = logrus.InfoLevel
