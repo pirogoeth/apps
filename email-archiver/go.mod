@@ -1,6 +1,6 @@
 module github.com/pirogoeth/apps/email-archiver
 
-go 1.22.3
+go 1.23
 
 replace github.com/pirogoeth/apps => ../
 

@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/blevesearch/bleve"
-	bleveMapping "github.com/blevesearch/bleve/mapping"
 	"github.com/gin-gonic/gin"
 	"github.com/pirogoeth/apps/pkg/system"
 	"github.com/sirupsen/logrus"
@@ -41,7 +39,9 @@ func runFunc(cmd *cobra.Command, args []string) {
 		panic(fmt.Errorf("could not create indexer: %w", err))
 	}
 
-	w := worker.New(cfg)
+	// TODO: create search ingester first, pass channel reference to email scanner worker
+	ingestWorker := worker.NewSearchIngestWorker(cfg, searcher)
+	scannerWorker := worker.NewEmailScannerWorker(cfg, ingestWorker.GetSender())
 
 	router := system.DefaultRouter()
 	api.MustRegister(router, &types.ApiContext{
@@ -50,7 +50,7 @@ func runFunc(cmd *cobra.Command, args []string) {
 	})
 
 	go router.Run(app.cfg.HTTP.ListenAddress)
-	go w.Run(ctx)
+	go scannerWorker.Run(ctx)
 
 	sw := system.NewSignalWaiter(os.Interrupt)
 	sw.OnBeforeCancel(func(context.Context) error {
@@ -62,12 +62,4 @@ func runFunc(cmd *cobra.Command, args []string) {
 		return nil
 	})
 	sw.Wait(ctx, cancel)
-}
-
-func createSearchIndexMapping() bleveMapping.IndexMapping {
-	docMapping := bleve.NewDocumentMapping()
-	indexMapping := bleve.NewIndexMapping()
-	indexMapping.AddDocumentMapping("_default", docMapping)
-
-	return indexMapping
 }

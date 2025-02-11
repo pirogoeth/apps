@@ -7,7 +7,7 @@ email-archiver: test **/*.go
 
 .PHONY: run-debug-api
 run-debug-api: email-archiver
-	LOG_LEVEL=DEBUG \
+	LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
 		CONFIG_TYPE=file \
 		CONFIG_FILE=./config.yml \
 		./email-archiver run

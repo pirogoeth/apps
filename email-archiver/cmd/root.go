@@ -6,6 +6,7 @@ import (
 	"github.com/pirogoeth/apps/email-archiver/config"
 	sysConfig "github.com/pirogoeth/apps/pkg/config"
 	"github.com/pirogoeth/apps/pkg/logging"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -33,6 +34,12 @@ func appStart(component string) *config.Config {
 	if err != nil {
 		panic(fmt.Errorf("could not start (config): %w", err))
 	}
+
+	if err := sysConfig.ApplyDefaults(cfg); err != nil {
+		panic(fmt.Errorf("could not start (config apply defaults): %w", err))
+	}
+
+	logrus.Tracef("loaded config: %#v", cfg)
 
 	return cfg
 }

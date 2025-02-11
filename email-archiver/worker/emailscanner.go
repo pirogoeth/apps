@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -12,19 +13,22 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/pirogoeth/apps/email-archiver/config"
+	"github.com/pirogoeth/apps/email-archiver/types"
 )
 
-type worker struct {
-	cfg *config.Config
+type emailScannerWorker struct {
+	cfg         *config.Config
+	ingestQueue types.SearchDataSender
 }
 
-func New(cfg *config.Config) *worker {
-	return &worker{
-		cfg: cfg,
+func NewEmailScannerWorker(cfg *config.Config, ingestQueue types.SearchDataSender) *emailScannerWorker {
+	return &emailScannerWorker{
+		cfg:         cfg,
+		ingestQueue: ingestQueue,
 	}
 }
 
-func (w *worker) Run(ctx context.Context) {
+func (w *emailScannerWorker) Run(ctx context.Context) {
 	nextScanInterval, err := time.ParseDuration(w.cfg.Worker.ScanInterval)
 	if err != nil {
 		panic(fmt.Errorf("could not parse scan interval: %w", err))
@@ -58,7 +62,7 @@ func (w *worker) Run(ctx context.Context) {
 	}
 }
 
-func (w *worker) scanInbox(ctx context.Context, inboxCfg config.InboxConfig) error {
+func (w *emailScannerWorker) scanInbox(ctx context.Context, inboxCfg config.InboxConfig) error {
 	var imapC *imapclient.Client
 	var err error
 
@@ -79,10 +83,12 @@ func (w *worker) scanInbox(ctx context.Context, inboxCfg config.InboxConfig) err
 		return fmt.Errorf("could not dial imap for inbox: %s: %w", inboxAddr, err)
 	}
 
-	if imapC.Login(inboxCfg.Username, inboxCfg.Password).Wait() != nil {
-		return fmt.Errorf("could not log in to inbox: %s: %w", inboxAddr, err)
+	if err := imapC.Login(inboxCfg.Username, inboxCfg.Password).Wait(); err != nil {
+		return fmt.Errorf("could not log in to inbox: %s@%s: %w", inboxCfg.Username, inboxAddr, err)
 	}
 	defer imapC.Logout()
+
+	logrus.Debugf("Remote %s supports caps: %#v", inboxAddr, imapC.Caps())
 
 	needCaps := []imap.Cap{imap.CapSort, imap.CapESearch}
 	for _, cap := range needCaps {
@@ -102,7 +108,7 @@ func (w *worker) scanInbox(ctx context.Context, inboxCfg config.InboxConfig) err
 	// but don't want to pre-allocate a channel that can accept all mailboxes. Instead, how about
 	// a channel that the scanner sends channels through!
 	for _, mailboxCfg := range targetMailboxes {
-		if err := w.scanMailbox(ctx, imapC, mailboxCfg); err != nil {
+		if err := w.scanMailbox(ctx, imapC, inboxCfg, mailboxCfg); err != nil {
 			logrus.Errorf("error while scanning mailbox %s on %s: %s", mailboxCfg.Name, inboxAddr, err)
 		}
 	}
@@ -110,7 +116,7 @@ func (w *worker) scanInbox(ctx context.Context, inboxCfg config.InboxConfig) err
 	return err
 }
 
-func (w *worker) collectChildMailboxes(ctx context.Context, imapC *imapclient.Client, inboxCfg config.InboxConfig) ([]config.MailboxConfig, error) {
+func (w *emailScannerWorker) collectChildMailboxes(ctx context.Context, imapC *imapclient.Client, inboxCfg config.InboxConfig) ([]config.MailboxConfig, error) {
 	mbList, err := imapC.List("", "*", nil).Collect()
 	if err != nil {
 		return nil, fmt.Errorf("could not list mailboxes: %w", err)
@@ -130,13 +136,13 @@ func (w *worker) collectChildMailboxes(ctx context.Context, imapC *imapclient.Cl
 	return targetMailboxes, nil
 }
 
-func (w *worker) scanMailbox(ctx context.Context, imapC *imapclient.Client, mbCfg config.MailboxConfig) error {
+func (w *emailScannerWorker) scanMailbox(ctx context.Context, imapC *imapclient.Client, inboxCfg config.InboxConfig, mbCfg config.MailboxConfig) error {
 	selection, err := imapC.Select(mbCfg.Name, nil).Wait()
 	if err != nil {
 		return fmt.Errorf("could not select mailbox: %s: %w", mbCfg.Name, err)
 	}
 
-	logrus.Debugf("Mailbox %s has %d messages", mbCfg.Name, selection.NumMessages)
+	logrus.Debugf("Mailbox `%s` has %d messages", mbCfg.Name, selection.NumMessages)
 
 	msgUids, err := imapC.Sort(&imapclient.SortOptions{
 		SearchCriteria: &imap.SearchCriteria{
@@ -152,25 +158,32 @@ func (w *worker) scanMailbox(ctx context.Context, imapC *imapclient.Client, mbCf
 		return fmt.Errorf("could not sort messages: %w", err)
 	}
 
-	firstMsg := msgUids[0]
-	lastMsg := msgUids[len(msgUids)-1]
+	if len(msgUids) == 0 {
+		logrus.Debugf("No messages remaining after applying search filters: flag=%v notFlag=%v",
+			mbCfg.Flags, mbCfg.IgnoreFlags,
+		)
+		return nil
+	}
 
-	seq := imap.SeqSetNum(firstMsg, lastMsg)
-	initialFetch := imapC.Fetch(seq, &imap.FetchOptions{
-		Envelope:     true,
-		InternalDate: true,
-		Flags:        true,
-	})
-	defer initialFetch.Close()
+	for chunk := range slices.Chunk(msgUids, inboxCfg.FetchBatchSize) {
+		seq := imap.SeqSetNum(chunk...)
+		initialFetch := imapC.Fetch(seq, &imap.FetchOptions{
+			Envelope:     true,
+			InternalDate: true,
+			Flags:        true,
+		})
+		defer initialFetch.Close()
 
-	for msg := initialFetch.Next(); msg != nil; msg = initialFetch.Next() {
-		msgBuf, err := msg.Collect()
-		if err != nil {
-			return fmt.Errorf("could not collect message: %w", err)
+		for msg := initialFetch.Next(); msg != nil; msg = initialFetch.Next() {
+			msgBuf, err := msg.Collect()
+			if err != nil {
+				return fmt.Errorf("could not collect message: %w", err)
+			}
+
+			// At this point, feed the message in to the searcher for indexing
+			logrus.Infof("Message: %#v", msgBuf)
+			logrus.Infof("Envelope: %#v", msgBuf.Envelope)
 		}
-
-		logrus.Infof("Message: %#v", msgBuf)
-		logrus.Infof("Envelope: %#v", msgBuf.Envelope)
 	}
 
 	return err
