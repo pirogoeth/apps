@@ -1,6 +1,7 @@
 package errors_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -36,4 +37,21 @@ func TestMultiError(t *testing.T) {
 =======================================
 `, TestMultiErrorOutput, err)
 	}
+}
+
+func TestMultiErrorRace(t *testing.T) {
+	m := new(errors.MultiError)
+	ctx, cancel := context.WithCancel(context.Background())
+	for i := range []uint8{1, 2} {
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					m.Add(fmt.Errorf("Goro %d has been cancelled!", i))
+				}
+			}
+		}()
+	}
+
+	cancel()
 }

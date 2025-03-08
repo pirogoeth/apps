@@ -24,7 +24,7 @@ func NewSearchIngestWorker(cfg *config.Config, searcher *search.Searcher) *searc
 }
 
 // GetSender returns the sender end of the channel for usage in the emailscanner
-func (w *searchIngestWorker) GetSender() chan<- *types.SearchData {
+func (w *searchIngestWorker) GetSender() types.SearchDataSender {
 	return w.queue
 }
 
@@ -44,6 +44,7 @@ func (w *searchIngestWorker) Run(ctx context.Context) error {
 
 func (w *searchIngestWorker) ingestSearchData(ctx context.Context, sd *types.SearchData) error {
 	ingestHandle := w.searcher.ForTime(sd.Envelope.Date).IndexerHandle()
+	defer ingestHandle.Close()
 
 	// TODO: the thing
 	ingestHandle.Index()

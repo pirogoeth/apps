@@ -79,7 +79,7 @@ type ArchivalStorageConfig struct {
 
 // ArchivalStorageConfigLocal is the config used when `archival.storage.type` == "local"
 type ArchivalStorageConfigLocal struct {
-	Path string `json:"path" envconfig:"ARCHIVAL_STORAGE_LOCAL_PATH" default:"/var/lib/email-archiver"`
+	Path string `json:"path" envconfig:"ARCHIVAL_STORAGE_LOCAL_PATH" default:"/var/lib/email-archiver/store"`
 }
 
 type ArchivalEncryptionConfig struct {
@@ -100,6 +100,8 @@ type ArchivalEncryptionConfig struct {
 
 type Config struct {
 	config.CommonConfig
+
+	DataDir string `json:"data_dir" envconfig:"DATA_DIR" default:"/var/lib/email-archiver"`
 
 	Archival ArchivalConfig `json:"archival"`
 	Inboxes  []InboxConfig  `json:"inboxes"`

@@ -90,7 +90,7 @@ func (w *emailScannerWorker) scanInbox(ctx context.Context, inboxCfg config.Inbo
 
 	logrus.Debugf("Remote %s supports caps: %#v", inboxAddr, imapC.Caps())
 
-	needCaps := []imap.Cap{imap.CapSort, imap.CapESearch}
+	needCaps := []imap.Cap{imap.CapSort, imap.CapESearch, imap.CapCondStore}
 	for _, cap := range needCaps {
 		if !imapC.Caps().Has(cap) {
 			return fmt.Errorf("server %s does not support %s, can not continue", inboxAddr, cap)
@@ -171,6 +171,9 @@ func (w *emailScannerWorker) scanMailbox(ctx context.Context, imapC *imapclient.
 			Envelope:     true,
 			InternalDate: true,
 			Flags:        true,
+			UID:          true,
+
+			BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
 		})
 		defer initialFetch.Close()
 
