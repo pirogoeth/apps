@@ -13,6 +13,7 @@ import (
 	"github.com/pirogoeth/apps/email-archiver/api"
 	"github.com/pirogoeth/apps/email-archiver/config"
 	"github.com/pirogoeth/apps/email-archiver/search"
+	"github.com/pirogoeth/apps/email-archiver/service"
 	"github.com/pirogoeth/apps/email-archiver/types"
 	"github.com/pirogoeth/apps/email-archiver/worker"
 )
@@ -40,8 +41,11 @@ func runFunc(cmd *cobra.Command, args []string) {
 	}
 
 	// TODO: create search ingester first, pass channel reference to email scanner worker
-	ingestWorker := worker.NewSearchIngestWorker(cfg, searcher)
-	scannerWorker := worker.NewEmailScannerWorker(cfg, ingestWorker.GetSender())
+	// ingestWorker := worker.NewSearchIngestWorker(cfg, searcher)
+	// scannerWorker := worker.NewEmailScannerWorker(cfg, ingestWorker.GetSender())
+
+	// Create message service
+	registry := service.InitServices(app.cfg)
 
 	router := system.DefaultRouter()
 	api.MustRegister(router, &types.ApiContext{
@@ -50,7 +54,12 @@ func runFunc(cmd *cobra.Command, args []string) {
 	})
 
 	go router.Run(app.cfg.HTTP.ListenAddress)
-	go scannerWorker.Run(ctx)
+	// go scannerWorker.Run(ctx)
+	go worker.RunWorkerPipeline(ctx, &worker.Deps{
+		Config:          app.cfg,
+		Searcher:        searcher,
+		ServiceRegistry: registry,
+	})
 
 	sw := system.NewSignalWaiter(os.Interrupt)
 	sw.OnBeforeCancel(func(context.Context) error {
@@ -58,6 +67,12 @@ func runFunc(cmd *cobra.Command, args []string) {
 			panic(fmt.Errorf("could not safely close indexer: %w", err))
 		}
 		logrus.Infof("closed indexer")
+
+		// Close all services
+		if err := registry.Close(); err != nil {
+			panic(fmt.Errorf("could not close services: %w", err))
+		}
+		logrus.Infof("closed all registered services")
 
 		return nil
 	})

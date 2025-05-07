@@ -92,7 +92,7 @@ func New(searchCfg *config.SearchConfig) (*Searcher, error) {
 		}
 	}
 
-	var searchCatalog map[time.Time]search.SearcherOpts
+	searchCatalog := make(map[time.Time]search.SearcherOpts)
 	if !catalogInit {
 		buf := new(bytes.Buffer)
 		if _, err := buf.ReadFrom(catalogFile); err != nil {
@@ -110,7 +110,6 @@ func New(searchCfg *config.SearchConfig) (*Searcher, error) {
 		if err != nil {
 			return nil, fmt.Errorf("could not open searcher for catalogued index: %s: %w", timePeriod, err)
 		}
-
 	}
 
 	return &Searcher{

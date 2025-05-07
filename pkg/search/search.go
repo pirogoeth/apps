@@ -35,18 +35,18 @@ func NewSearcher(opts SearcherOpts) (*BleveSearcher, error) {
 	indexPath := path.Join(opts.IndexDir, "index.bleve")
 	if _, err := os.Stat(indexPath); os.IsNotExist(err) {
 		// Create the index
-		logrus.Debugf("Creating new bleve index at %s", indexPath)
 		index, err = createBleveIndex(indexPath, opts.IndexMapping)
 		if err != nil {
 			return nil, fmt.Errorf("could not create bleve index: %w", err)
 		}
+		logrus.Debugf("Created new bleve index at %s", indexPath)
 	} else {
 		// Open the index
-		logrus.Debugf("Opening existing index at %s", indexPath)
 		index, err = openBleveIndex(indexPath)
 		if err != nil {
 			return nil, fmt.Errorf("could not open bleve index: %w", err)
 		}
+		logrus.Debugf("Opened existing index at %s", indexPath)
 	}
 
 	searcher := &BleveSearcher{

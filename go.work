@@ -1,5 +1,9 @@
 go 1.24.1
 
+godebug (
+	gotypesalias=1
+)
+
 use (
 	./functional
 	./email-archiver

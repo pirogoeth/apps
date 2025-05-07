@@ -2,30 +2,29 @@ package worker
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/pirogoeth/apps/email-archiver/config"
 	"github.com/pirogoeth/apps/email-archiver/search"
-	"github.com/pirogoeth/apps/email-archiver/types"
+	"github.com/pirogoeth/apps/email-archiver/service"
+	"github.com/pirogoeth/apps/pkg/pipeline"
+	"github.com/sirupsen/logrus"
 )
 
 type searchIngestWorker struct {
+	*pipeline.StageFitting[PipelineData]
+
 	cfg      *config.Config
-	queue    chan *types.SearchData
 	searcher *search.Searcher
+	services *service.Services
 }
 
-func NewSearchIngestWorker(cfg *config.Config, searcher *search.Searcher) *searchIngestWorker {
+func NewSearchIngestWorker(deps *Deps, inlet PipelineInlet, outlet PipelineOutlet) pipeline.Stage {
 	return &searchIngestWorker{
-		cfg:      cfg,
-		queue:    make(chan *types.SearchData, cfg.Worker.Indexer.QueueSize),
-		searcher: searcher,
+		StageFitting: pipeline.NewStageFitting(inlet, outlet),
+		cfg:          deps.Config,
+		searcher:     deps.Searcher,
+		services:     deps.Services,
 	}
-}
-
-// GetSender returns the sender end of the channel for usage in the emailscanner
-func (w *searchIngestWorker) GetSender() types.SearchDataSender {
-	return w.queue
 }
 
 // Run starts a loop that monitors for email envelopes and bodies to ingest into the searcher system
@@ -34,20 +33,32 @@ func (w *searchIngestWorker) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return nil
-		case searchData := <-w.queue:
+		case searchData := <-w.Inlet():
 			if err := w.ingestSearchData(ctx, searchData); err != nil {
 				return err
 			}
+
+			w.Write(searchData)
 		}
 	}
 }
 
-func (w *searchIngestWorker) ingestSearchData(ctx context.Context, sd *types.SearchData) error {
+func (w *searchIngestWorker) ingestSearchData(ctx context.Context, sd PipelineData) error {
 	ingestHandle := w.searcher.ForTime(sd.Envelope.Date).IndexerHandle()
 	defer ingestHandle.Close()
 
 	// TODO: the thing
-	ingestHandle.Index()
+	data := make(map[string]any)
+	data["envelope"] = sd.Envelope
+	data["body"] = sd.Body
+	data["mailbox"] = sd.Mailbox
+	data["uid"] = sd.UID
+	err := ingestHandle.Index().Index(sd.UID.String(), data)
+	if err != nil {
+		return err
+	}
 
-	return fmt.Errorf("not implemented")
+	logrus.Infof("Successfully indexed message %s", sd.UID)
+
+	return nil
 }

@@ -40,6 +40,8 @@ func (p *Pipeline[T]) Run(ctx context.Context) error {
 	for !p.stages.Done() {
 		select {
 		case completeItem := <-p.tail:
+			// TODO(seanj): Is this right? Or should we expect the final stage of
+			// the pipeline to fully consume the item?
 			logrus.Debugf("Received an item out of the pipeline: %#v", completeItem)
 		case <-ctx.Done():
 			err := p.stages.Drain()
@@ -57,21 +59,21 @@ func (p *Pipeline[T]) Run(ctx context.Context) error {
 	return nil
 }
 
-func NewPipeline[Cfg any, T any](cfg Cfg, stageFns ...StageInit[Cfg, T]) *Pipeline[T] {
+func NewPipeline[Deps any, Data any](deps Deps, stageFns ...StageInit[Deps, Data]) *Pipeline[Data] {
 	// TODO: are unbuffered channels the right move here?
 	stages := make(Stages, 0)
-	head := make(chan T)
+	head := make(chan Data)
 	source := head
 	for _, initFn := range stageFns {
-		sink := make(chan T)
-		stage := initFn(cfg, source, sink)
+		sink := make(chan Data)
+		stage := initFn(deps, source, sink)
 		stages = append(stages, stage)
 		// We want the sink of the current iteration to be the source of the next iteration, so store sink in source
 		source = sink
 	}
 	tail := source
 	// for each pipeline stage, we need to create create a new inlet-outlet channel pair
-	return &Pipeline[T]{
+	return &Pipeline[Data]{
 		stages: stages,
 		head:   head,
 		tail:   tail,

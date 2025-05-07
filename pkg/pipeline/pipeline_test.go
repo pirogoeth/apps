@@ -17,11 +17,11 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-type Config struct{}
+type Deps struct{}
 
 var _ Stage = (*Generator)(nil)
 
-func InitGenerator(cfg *Config, inlet <-chan int, outlet chan<- int) Stage {
+func InitGenerator(deps *Deps, inlet <-chan int, outlet chan<- int) Stage {
 	// The initial stage will not use the inlet channel, only generate data to pass to further stages
 	return &Generator{
 		inlet:  nil,
@@ -67,7 +67,7 @@ func (g *Generator) Run(ctx context.Context) error {
 
 var _ Stage = (*Printer)(nil)
 
-func InitPrinter(cfg *Config, inlet <-chan int, outlet chan<- int) Stage {
+func InitPrinter(deps *Deps, inlet <-chan int, outlet chan<- int) Stage {
 	// The initial stage will not use the inlet channel, only generate data to pass to further stages
 	return &Printer{
 		inlet:  inlet,
@@ -110,7 +110,8 @@ func (p *Printer) Run(ctx context.Context) error {
 }
 
 func TestPipelineRunWithManualStages(t *testing.T) {
-	p := NewPipeline(nil, InitGenerator, InitPrinter)
+	var deps *Deps = nil
+	p := NewPipeline(deps, InitGenerator, InitPrinter)
 	p.Run(context.Background())
 }
 
@@ -124,11 +125,11 @@ func (f *Frobnicator) Run(ctx context.Context) error {
 	logrus.Debugf("let's frobnicate this thing!")
 	f.outlet <- "frobnify the flimflam"
 	logrus.Debugf("you have now been frobnicated")
-	f.finish()
+	f.Finish()
 	return f.Close()
 }
 
-func InitFrobnicator(cfg *Config, inlet <-chan string, outlet chan<- string) Stage {
+func InitFrobnicator(deps *Deps, inlet <-chan string, outlet chan<- string) Stage {
 	return &Frobnicator{
 		StageFitting: NewStageFitting(inlet, outlet),
 	}
@@ -136,5 +137,33 @@ func InitFrobnicator(cfg *Config, inlet <-chan string, outlet chan<- string) Sta
 
 func TestPipelineRunWithStageFittings(t *testing.T) {
 	p := NewPipeline(nil, InitFrobnicator)
+	p.Run(context.Background())
+}
+
+var _ Stage = (*Bazinator)(nil)
+
+type Bazinator struct {
+	*StageFitting[string]
+}
+
+func (b *Bazinator) Run(ctx context.Context) error {
+	b.Finish()
+	return b.Close()
+}
+
+type (
+	BazinatorData   = string
+	BazinatorInlet  = <-chan string
+	BazinatorOutlet = chan<- string
+)
+
+func InitBazinator(deps *Deps, inlet BazinatorInlet, outlet BazinatorOutlet) Stage {
+	return &Bazinator{
+		StageFitting: NewStageFitting(inlet, outlet),
+	}
+}
+
+func TestPipelineRunWithAliasTypes(t *testing.T) {
+	p := NewPipeline(nil, InitBazinator)
 	p.Run(context.Background())
 }

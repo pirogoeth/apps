@@ -2,15 +2,39 @@ package errors
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"sync"
 )
 
 var _ error = (*MultiError)(nil)
 
+type errLoc struct {
+	file     string
+	lineNo   int
+	funcName string
+}
+
+func (e *errLoc) String() string {
+	if e == nil {
+		return "<nil>"
+	}
+
+	return fmt.Sprintf("%s:%d %s()", e.file, e.lineNo, e.funcName)
+}
+
+func errLocFrom(file string, lineNo int, pc uintptr) *errLoc {
+	return &errLoc{
+		file:     file,
+		lineNo:   lineNo,
+		funcName: runtime.FuncForPC(pc).Name(),
+	}
+}
+
 type MultiError struct {
-	errs []error
-	mu   sync.Mutex
+	errs    []error
+	errLocs []*errLoc
+	mu      sync.Mutex
 }
 
 func (m *MultiError) Add(err error) {
@@ -20,6 +44,13 @@ func (m *MultiError) Add(err error) {
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	pc, file, lineNo, ok := runtime.Caller(1)
+	if !ok {
+		m.errLocs = append(m.errLocs, nil)
+	} else {
+		m.errLocs = append(m.errLocs, errLocFrom(file, lineNo, pc))
+	}
 
 	m.errs = append(m.errs, err)
 }
@@ -43,7 +74,8 @@ func (m *MultiError) Error() string {
 	fmt.Fprintf(builder, "*** %d errors have occurred:\n\n", len(m.errs))
 	fmt.Fprintf(builder, "%s\n", strings.Repeat("-", 40))
 	for idx, err := range m.errs {
-		fmt.Fprintf(builder, "| Error #%d\n|\n", idx)
+		fmt.Fprintf(builder, "| Error #%d\n", idx)
+		fmt.Fprintf(builder, "| at %s\n|\n", m.errLocs[idx])
 		for _, errLine := range strings.Split(err.Error(), "\n") {
 			fmt.Fprintf(builder, "| %s\n", errLine)
 			fmt.Fprintf(builder, "\\%s\n", strings.Repeat("-", 39))

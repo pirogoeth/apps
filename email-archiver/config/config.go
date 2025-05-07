@@ -8,7 +8,7 @@ import (
 	"github.com/pirogoeth/apps/pkg/config"
 )
 
-type InboxConfig struct {
+type MailhostConfig struct {
 	Username  string          `json:"username"`
 	Password  string          `json:"password"`
 	Host      string          `json:"host"`
@@ -23,7 +23,7 @@ type InboxConfig struct {
 	FetchBatchSize int `json:"fetch_batch_size" default:"20"`
 }
 
-func (i *InboxConfig) InboxAddr() string {
+func (i *MailhostConfig) InboxAddr() string {
 	return fmt.Sprintf("%s:%d", i.Host, i.Port)
 }
 
@@ -103,8 +103,8 @@ type Config struct {
 
 	DataDir string `json:"data_dir" envconfig:"DATA_DIR" default:"/var/lib/email-archiver"`
 
-	Archival ArchivalConfig `json:"archival"`
-	Inboxes  []InboxConfig  `json:"inboxes"`
-	Search   SearchConfig   `json:"search"`
-	Worker   WorkerConfig   `json:"worker"`
+	Archival ArchivalConfig   `json:"archival"`
+	Inboxes  []MailhostConfig `json:"inboxes"`
+	Search   SearchConfig     `json:"search"`
+	Worker   WorkerConfig     `json:"worker"`
 }

@@ -5,7 +5,12 @@ import (
 	"fmt"
 )
 
-type StageInit[Cfg any, T any] func(cfg Cfg, inlet <-chan T, outlet chan<- T) Stage
+type (
+	Inlet[T any]  = <-chan T
+	Outlet[T any] = chan<- T
+)
+
+type StageInit[Deps any, Data any] func(deps Deps, inlet Inlet[Data], outlet Outlet[Data]) Stage
 
 type Stage interface {
 	Run(context.Context) error

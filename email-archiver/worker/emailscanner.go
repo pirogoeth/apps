@@ -13,22 +13,29 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/pirogoeth/apps/email-archiver/config"
+	"github.com/pirogoeth/apps/email-archiver/service"
 	"github.com/pirogoeth/apps/email-archiver/types"
+	"github.com/pirogoeth/apps/pkg/pipeline"
 )
 
+var _ pipeline.Stage = (*emailScannerWorker)(nil)
+
 type emailScannerWorker struct {
-	cfg         *config.Config
-	ingestQueue types.SearchDataSender
+	*pipeline.StageFitting[PipelineData]
+
+	cfg             *config.Config
+	serviceRegistry *service.ServiceRegistry
 }
 
-func NewEmailScannerWorker(cfg *config.Config, ingestQueue types.SearchDataSender) *emailScannerWorker {
+func NewEmailScannerWorker(deps *Deps, inlet PipelineInlet, outlet PipelineOutlet) pipeline.Stage {
 	return &emailScannerWorker{
-		cfg:         cfg,
-		ingestQueue: ingestQueue,
+		StageFitting:    pipeline.NewStageFitting(inlet, outlet),
+		cfg:             deps.Config,
+		serviceRegistry: deps.ServiceRegistry,
 	}
 }
 
-func (w *emailScannerWorker) Run(ctx context.Context) {
+func (w *emailScannerWorker) Run(ctx context.Context) error {
 	nextScanInterval, err := time.ParseDuration(w.cfg.Worker.ScanInterval)
 	if err != nil {
 		panic(fmt.Errorf("could not parse scan interval: %w", err))
@@ -44,11 +51,12 @@ func (w *emailScannerWorker) Run(ctx context.Context) {
 				logrus.Errorf("error while scanning inboxes: %s", err)
 			}
 		case <-ctx.Done():
-			return
+			w.Finish()
+			return nil
 		case <-time.After(scanInterval):
-			for _, inboxCfg := range w.cfg.Inboxes {
+			for _, mhCfg := range w.cfg.Inboxes {
 				eg.Go(func() error {
-					err := w.scanInbox(ctx, inboxCfg)
+					err := w.scanInbox(ctx, mhCfg)
 					logrus.Infof("Scanner returned: %s", err)
 					return err
 				})
@@ -62,44 +70,16 @@ func (w *emailScannerWorker) Run(ctx context.Context) {
 	}
 }
 
-func (w *emailScannerWorker) scanInbox(ctx context.Context, inboxCfg config.InboxConfig) error {
-	var imapC *imapclient.Client
-	var err error
-
-	logrus.Infof("Opening connection to %s", inboxCfg.Host)
-
-	clientOpts := &imapclient.Options{}
-	if w.cfg.Worker.Debug.Imap {
-		clientOpts.DebugWriter = logrus.StandardLogger().WriterLevel(logrus.DebugLevel)
-	}
-
-	inboxAddr := inboxCfg.InboxAddr()
-	if inboxCfg.UseTLS {
-		imapC, err = imapclient.DialTLS(inboxAddr, clientOpts)
-	} else {
-		imapC, err = imapclient.DialInsecure(inboxAddr, clientOpts)
-	}
+func (w *emailScannerWorker) scanInbox(ctx context.Context, mhCfg config.MailhostConfig) error {
+	mhSvc, _ := service.GetAs[*service.MailhostService](w.serviceRegistry, "Mailhost")
+	imapC, err := mhSvc.Connection(mhCfg)
 	if err != nil {
-		return fmt.Errorf("could not dial imap for inbox: %s: %w", inboxAddr, err)
+		return fmt.Errorf("while scanning inboxes: %w", err)
 	}
 
-	if err := imapC.Login(inboxCfg.Username, inboxCfg.Password).Wait(); err != nil {
-		return fmt.Errorf("could not log in to inbox: %s@%s: %w", inboxCfg.Username, inboxAddr, err)
-	}
-	defer imapC.Logout()
-
-	logrus.Debugf("Remote %s supports caps: %#v", inboxAddr, imapC.Caps())
-
-	needCaps := []imap.Cap{imap.CapSort, imap.CapESearch, imap.CapCondStore}
-	for _, cap := range needCaps {
-		if !imapC.Caps().Has(cap) {
-			return fmt.Errorf("server %s does not support %s, can not continue", inboxAddr, cap)
-		}
-	}
-
-	targetMailboxes, err := w.collectChildMailboxes(ctx, imapC, inboxCfg)
+	targetMailboxes, err := w.collectChildMailboxes(ctx, imapC, mhCfg)
 	if err != nil {
-		return fmt.Errorf("could not collect mailboxes: %#v: %w", inboxCfg, err)
+		return fmt.Errorf("could not collect mailboxes: %#v: %w", mhCfg, err)
 	}
 
 	logrus.Debugf("Collected mailboxes: %#v", targetMailboxes)
@@ -108,22 +88,22 @@ func (w *emailScannerWorker) scanInbox(ctx context.Context, inboxCfg config.Inbo
 	// but don't want to pre-allocate a channel that can accept all mailboxes. Instead, how about
 	// a channel that the scanner sends channels through!
 	for _, mailboxCfg := range targetMailboxes {
-		if err := w.scanMailbox(ctx, imapC, inboxCfg, mailboxCfg); err != nil {
-			logrus.Errorf("error while scanning mailbox %s on %s: %s", mailboxCfg.Name, inboxAddr, err)
+		if err := w.scanMailbox(ctx, imapC, mhCfg, mailboxCfg); err != nil {
+			logrus.Errorf("error while scanning mailbox %s on %s: %s", mailboxCfg.Name, mhCfg.InboxAddr(), err)
 		}
 	}
 
 	return err
 }
 
-func (w *emailScannerWorker) collectChildMailboxes(ctx context.Context, imapC *imapclient.Client, inboxCfg config.InboxConfig) ([]config.MailboxConfig, error) {
+func (w *emailScannerWorker) collectChildMailboxes(ctx context.Context, imapC *imapclient.Client, mhCfg config.MailhostConfig) ([]config.MailboxConfig, error) {
 	mbList, err := imapC.List("", "*", nil).Collect()
 	if err != nil {
 		return nil, fmt.Errorf("could not list mailboxes: %w", err)
 	}
 
 	var targetMailboxes []config.MailboxConfig
-	for _, mbCfg := range inboxCfg.Mailboxes {
+	for _, mbCfg := range mhCfg.Mailboxes {
 		for _, mb := range mbList {
 			if !mbCfg.IncludeChildren && mb.Mailbox == mbCfg.Name {
 				targetMailboxes = append(targetMailboxes, mbCfg)
@@ -136,13 +116,13 @@ func (w *emailScannerWorker) collectChildMailboxes(ctx context.Context, imapC *i
 	return targetMailboxes, nil
 }
 
-func (w *emailScannerWorker) scanMailbox(ctx context.Context, imapC *imapclient.Client, inboxCfg config.InboxConfig, mbCfg config.MailboxConfig) error {
-	selection, err := imapC.Select(mbCfg.Name, nil).Wait()
+func (w *emailScannerWorker) scanMailbox(ctx context.Context, imapC *imapclient.Client, mhCfg config.MailhostConfig, mbCfg config.MailboxConfig) error {
+	activeMailbox, err := imapC.Select(mbCfg.Name, nil).Wait()
 	if err != nil {
 		return fmt.Errorf("could not select mailbox: %s: %w", mbCfg.Name, err)
 	}
 
-	logrus.Debugf("Mailbox `%s` has %d messages", mbCfg.Name, selection.NumMessages)
+	logrus.Debugf("Mailbox `%s` has %d messages", mbCfg.Name, activeMailbox.NumMessages)
 
 	msgUids, err := imapC.Sort(&imapclient.SortOptions{
 		SearchCriteria: &imap.SearchCriteria{
@@ -165,15 +145,22 @@ func (w *emailScannerWorker) scanMailbox(ctx context.Context, imapC *imapclient.
 		return nil
 	}
 
-	for chunk := range slices.Chunk(msgUids, inboxCfg.FetchBatchSize) {
+	for chunk := range slices.Chunk(msgUids, mhCfg.FetchBatchSize) {
 		seq := imap.SeqSetNum(chunk...)
+		// TODO: Instead of always fetching, we can try to defer this!
+		// The scanner should just gather all of the messages according
+		// to the inboxes/mailboxes configuration, and pass that off, but
+		// support a future pipeline step being able to "backfill" all of the message data.
+		//
+		// As probably icky as this may be, could we define a closured backfill function on the data
+		// we pass along to backfill the message data?
 		initialFetch := imapC.Fetch(seq, &imap.FetchOptions{
 			Envelope:     true,
 			InternalDate: true,
 			Flags:        true,
 			UID:          true,
 
-			BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+			// BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
 		})
 		defer initialFetch.Close()
 
@@ -186,6 +173,16 @@ func (w *emailScannerWorker) scanMailbox(ctx context.Context, imapC *imapclient.
 			// At this point, feed the message in to the searcher for indexing
 			logrus.Infof("Message: %#v", msgBuf)
 			logrus.Infof("Envelope: %#v", msgBuf.Envelope)
+			w.Write(PipelineData(&types.ArchiverPipelineData{
+				Envelope: msgBuf.Envelope,
+				UID:      types.NewImapUID(mbCfg.Name, activeMailbox.UIDValidity, msgBuf.UID),
+				Mailbox: &types.MailboxData{
+					InboxAddr: mhCfg.InboxAddr(),
+					Mailhost:  mhCfg.Host,
+					Username:  mhCfg.Username,
+					Mailbox:   mbCfg.Name,
+				},
+			}))
 		}
 	}
 
