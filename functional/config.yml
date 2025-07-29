@@ -1,0 +1,35 @@
+http:
+  listen_address: "0.0.0.0:8080"
+
+tracing:
+  enabled: false
+  service_name: "functional"
+  endpoint: "http://localhost:4317"
+
+database:
+  path: "functional.db"
+
+compute:
+  provider: "docker"
+  docker:
+    socket: "unix:///var/run/docker.sock"
+    network: "functional-net"
+    registry: "localhost:5000"
+  firecracker:
+    kernel_image_path: "./firecracker/vmlinux-6.1.128"
+    rootfs_image_path: "./firecracker/ubuntu-24.04.ext4"
+    work_dir: "./firecracker-vms"
+    network_device: "firecracker0"
+
+storage:
+  functions_path: "./functions"
+  temp_path: "./tmp"
+
+runtime:
+  max_concurrent_executions: 100
+  default_timeout: 30s
+  scaling:
+    min_replicas: 1
+    max_replicas: 10
+    scale_up_threshold: 0.8
+    scale_down_threshold: 0.2
