@@ -27,7 +27,7 @@ func DefaultConfig() *Config {
 }
 
 type Client struct {
-	cfg    *config.Config
+	cfg    *Config
 	client *redis.Client
 
 	ConsumerGroupName string
@@ -56,8 +56,8 @@ func (c *Client) Close() error {
 func (c *Client) Stream(ctx context.Context) (any, error) {
 	c.client.XGroupCreate(ctx, c.cfg.Redis.Stream, "GROUPNAME", "STARTID")
 	return c.client.XRead(ctx, &redis.XReadArgs{
-		Streams: []string{c.Redis.Stream, "0"},
+		Streams: []string{c.cfg.Redis.Stream, "0"},
 		Count:   10,
 		Block:   0,
-	})
+	}), nil
 }

@@ -17,16 +17,16 @@ const (
 )
 
 type RaceGroup[T any] struct {
-	raceType RaceType
 	fns      []wrapper[T]
+	raceType RaceType
 	fnsLock  sync.Mutex
 }
 
 // NewRaceGroup creates a new RaceGroup
 func NewRaceGroup[T any](raceType RaceType, fns ...wrapper[T]) *RaceGroup[T] {
 	return &RaceGroup[T]{
-		raceType,
 		fns,
+		raceType,
 		sync.Mutex{},
 	}
 }

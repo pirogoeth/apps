@@ -64,7 +64,7 @@ func (e *v1HostScanEndpoints) searchHostScans(ctx *gin.Context) {
 	}
 
 	logrus.Debugf("check-out searcher handle")
-	handle := e.Searcher.Handle()
+	handle := e.Searcher.SearcherHandle()
 	defer handle.Close()
 
 	searchReq := handle.PrepareSearchRequest(query)
@@ -139,7 +139,7 @@ func (e *v1HostScanEndpoints) createHostScans(ctx *gin.Context) {
 
 	// Index the hostscans
 	logrus.Debugf("check-out searcher handle")
-	handle := e.Searcher.Handle()
+	handle := e.Searcher.SearcherHandle()
 	defer handle.Close()
 
 	batch := handle.Index().NewBatch()

@@ -1,7 +1,12 @@
 go 1.24.1
 
+godebug (
+	gotypesalias=1
+)
+
 use (
 	./functional
+	./email-archiver
 	./maparoon
 	./nomad-deployer
 	./nomad-event-stream
@@ -9,4 +14,5 @@ use (
 	./nomad-service-cleaner
 	./orba
 	./voice-memos
+	./pkg
 )
