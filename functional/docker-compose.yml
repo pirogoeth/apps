@@ -1,0 +1,111 @@
+---
+
+volumes:
+  functional-data: {}
+  traefik-data: {}
+
+networks:
+  backend: {}
+
+services:
+  functional:
+    build:
+      context: ..
+      dockerfile: ./functional/Dockerfile
+    command: [serve]
+    environment:
+      CONFIG_TYPE: file
+      CONFIG_FILE: /app/config.yml
+    configs:
+      - source: functional-config
+        target: /app/config.yml
+    ports:
+      - 8000
+    networks:
+      - backend
+    depends_on:
+      - traefik
+    healthcheck:
+      test: curl -sSL http://localhost:8000/system/liveness
+      interval: "1m"
+      timeout: "10s"
+      retries: 3
+      start_period: "30s"
+    labels:
+      - appname=functional
+      - component=api
+
+  traefik:
+    image: docker.io/library/traefik:latest
+    command:
+      - --configfile=/config/config.yml
+    environment: {}
+    env_file: ./.env
+    configs:
+      - source: traefik-static-config
+        target: /config/config.yml
+    ports:
+      - 80
+      - 443
+    networks:
+      - backend
+    healthcheck:
+      test: curl -sSL http://localhost:80
+    labels:
+      - appname=functional
+      - component=traefik
+
+configs:
+  functional-config:
+    content: |
+      http:
+        listen_address: "0.0.0.0:8000"
+      database:
+        path: "/app/functional.db"
+      compute:
+        provider: "docker"
+        docker:
+          socket: "unix:///var/run/docker.sock"
+          network: functional-net
+          registry: "localhost:5000"
+      storage:
+        functions_path: "/data/functions"
+        temp_path: "/data/tmp"
+  traefik-static-config:
+    content: |
+      log:
+        level: "INFO"
+        format: "json"
+      accessLog:
+        format: "json"
+        filters:
+          statusCodes:
+            - 400-499
+            - 500-599
+          retryAttempts: true
+          minDuration: "500ms"
+      entryPoints:
+        http:
+          address: ":80"
+        https:
+          address: ":443"
+        internal:
+          address: ":8889"
+      api:
+        insecure: false
+        dashboard: true
+      ping:
+        entryPoint: internal
+  traefik-internal-routing:
+    content: |
+      http:
+        routers:
+          dashboard:
+            rule: PathPrefix(`/api`) || PathPrefix(`/dashboard`)
+            service: api@internal
+        middlewares:
+          auth:
+            basicAuth:
+              users:
+                # default credentials: admin:nuWr4ONi9SfkKQx6
+                - "admin:$$apr1$$O0.VQWA.$$fj8qCnHxN7iC5qDgfTp3u0"

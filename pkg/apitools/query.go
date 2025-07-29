@@ -21,7 +21,7 @@ func QueryBool(ctx *gin.Context, queryParam string, defaultValue bool) bool {
 	queryValue, err := strconv.ParseBool(QueryOr(ctx, queryParam, strconv.FormatBool(defaultValue)))
 	if err != nil {
 		ctx.AbortWithStatusJSON(http.StatusBadRequest, &gin.H{
-			"message": fmt.Sprintf("%s: %s", ErrInvalidParameter, queryParam),
+			"message": fmt.Sprintf("%s: %s", MsgInvalidParameter, queryParam),
 		})
 		return defaultValue
 	}
