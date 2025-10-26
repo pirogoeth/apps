@@ -1,0 +1,37 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # docker-hermes server metrics
+  - job_name: 'docker-hermes-server'
+    static_configs:
+      - targets: ['hermes-server:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # docker-hermes agents metrics
+  - job_name: 'docker-hermes-agents'
+    static_configs:
+      - targets: ['hermes-agent-1:9090', 'hermes-agent-2:9090']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # Docker containers via docker-hermes HTTP SD
+  - job_name: 'docker-containers'
+    http_sd_configs:
+      - url: 'http://hermes-server:8080/prometheus/sd'
+        refresh_interval: 30s
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    metrics_path: '/metrics'
+    scheme: 'http'

@@ -1,0 +1,16 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "database/queries/pg"
+    schema: "database/migrations/pg"
+    gen:
+      go:
+        package: "pg"
+        out: "database/pg"
+        sql_package: "database/sql"
+        emit_json_tags: true
+        emit_db_tags: true
+        emit_prepared_queries: false
+        emit_interface: false
+        emit_exact_table_names: false
+        emit_empty_slices: true
