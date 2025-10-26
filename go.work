@@ -5,8 +5,6 @@ godebug gotypesalias=1
 use (
 	./docker-hermes
 	./email-archiver
-	./functional
-	./functional/runtime
 	./maparoon
 	./moneyman
 	./nomad-deployer
