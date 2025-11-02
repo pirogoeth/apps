@@ -6,7 +6,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 
-	"github.com/pirogoeth/apps/docker-hermes/redis"
 	"github.com/pirogoeth/apps/docker-hermes/types"
 	api "github.com/pirogoeth/apps/pkg/apitools"
 )
@@ -35,9 +34,7 @@ func RegisterRoutes(router *gin.Engine, apiContext *types.ApiContext) error {
 // listContainers returns all active containers
 func listContainers(apiContext *types.ApiContext) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		redisClient := apiContext.RedisClient.(*redis.Client)
-
-		containers, err := redisClient.ListContainers(c.Request.Context())
+		containers, err := apiContext.RedisClient.ListContainers(c.Request.Context())
 		if err != nil {
 			logrus.Errorf("Failed to list containers: %v", err)
 			api.ErrorPayload("failed to list containers", err)
@@ -54,12 +51,10 @@ func listContainers(apiContext *types.ApiContext) gin.HandlerFunc {
 // getContainer returns a specific container by host and ID
 func getContainer(apiContext *types.ApiContext) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		redisClient := apiContext.RedisClient.(*redis.Client)
-
 		host := c.Param("host")
 		id := c.Param("id")
 
-		container, err := redisClient.GetContainer(c.Request.Context(), host, id)
+		container, err := apiContext.RedisClient.GetContainer(c.Request.Context(), host, id)
 		if err != nil {
 			logrus.Errorf("Failed to get container %s on host %s: %v", id, host, err)
 			api.ErrorPayload("failed to get container", err)
@@ -80,15 +75,13 @@ func getContainer(apiContext *types.ApiContext) gin.HandlerFunc {
 // queryContainers queries containers by label filters
 func queryContainers(apiContext *types.ApiContext) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		redisClient := apiContext.RedisClient.(*redis.Client)
-
 		var query types.ContainerQuery
 		if err := c.ShouldBindJSON(&query); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid query format"})
 			return
 		}
 
-		containers, err := redisClient.QueryByLabels(c.Request.Context(), &query)
+		containers, err := apiContext.RedisClient.QueryByLabels(c.Request.Context(), &query)
 		if err != nil {
 			logrus.Errorf("Failed to query containers: %v", err)
 			api.ErrorPayload("failed to query containers", err)
@@ -106,9 +99,7 @@ func queryContainers(apiContext *types.ApiContext) gin.HandlerFunc {
 // listLabels returns all unique label keys and their values
 func listLabels(apiContext *types.ApiContext) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		redisClient := apiContext.RedisClient.(*redis.Client)
-
-		labels, err := redisClient.GetLabels(c.Request.Context())
+		labels, err := apiContext.RedisClient.GetLabels(c.Request.Context())
 		if err != nil {
 			logrus.Errorf("Failed to list labels: %v", err)
 			api.ErrorPayload("failed to list labels", err)
@@ -125,10 +116,8 @@ func listLabels(apiContext *types.ApiContext) gin.HandlerFunc {
 // getLabelValues returns all values for a specific label key
 func getLabelValues(apiContext *types.ApiContext) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		redisClient := apiContext.RedisClient.(*redis.Client)
-
 		key := c.Param("key")
-		values, err := redisClient.GetLabelValues(c.Request.Context(), key)
+		values, err := apiContext.RedisClient.GetLabelValues(c.Request.Context(), key)
 		if err != nil {
 			logrus.Errorf("Failed to get label values for key %s: %v", key, err)
 			api.ErrorPayload("failed to get label values", err)
@@ -146,9 +135,7 @@ func getLabelValues(apiContext *types.ApiContext) gin.HandlerFunc {
 // listHosts returns all known hosts
 func listHosts(apiContext *types.ApiContext) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		redisClient := apiContext.RedisClient.(*redis.Client)
-
-		hosts, err := redisClient.GetHosts(c.Request.Context())
+		hosts, err := apiContext.RedisClient.GetHosts(c.Request.Context())
 		if err != nil {
 			logrus.Errorf("Failed to list hosts: %v", err)
 			api.ErrorPayload("failed to list hosts", err)

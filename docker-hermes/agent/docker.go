@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	dockerTypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/filters"
@@ -75,7 +76,7 @@ func (d *DockerClient) WatchContainers(ctx context.Context, hostname string, cal
 	eventFilter.Add("event", "stop")
 	eventFilter.Add("event", "die")
 
-	eventChan, errChan := d.client.Events(ctx, events.ListOptions{
+	eventChan, errChan := d.client.Events(ctx, dockerTypes.EventsOptions{
 		Filters: eventFilter,
 	})
 
@@ -137,7 +138,7 @@ func (d *DockerClient) handleDockerEvent(ctx context.Context, event events.Messa
 }
 
 // extractContainerInfo extracts container information from container list response
-func (d *DockerClient) extractContainerInfo(ctx context.Context, container container.Summary, hostname string) (*hermesTypes.ContainerInfo, error) {
+func (d *DockerClient) extractContainerInfo(ctx context.Context, container dockerTypes.Container, hostname string) (*hermesTypes.ContainerInfo, error) {
 	// Get detailed container info
 	inspect, err := d.client.ContainerInspect(ctx, container.ID)
 	if err != nil {
@@ -148,7 +149,7 @@ func (d *DockerClient) extractContainerInfo(ctx context.Context, container conta
 }
 
 // extractContainerInfoFromInspect extracts container information from inspect response
-func (d *DockerClient) extractContainerInfoFromInspect(inspect container.InspectResponse, hostname string) (*hermesTypes.ContainerInfo, error) {
+func (d *DockerClient) extractContainerInfoFromInspect(inspect dockerTypes.ContainerJSON, hostname string) (*hermesTypes.ContainerInfo, error) {
 	logrus.WithField("container", inspect.ID).Debugf("Extracting container info from inspect")
 
 	// Extract ports

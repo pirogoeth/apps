@@ -18,7 +18,7 @@ import (
 // Server represents the docker-hermes server
 type Server struct {
 	config      *types.Config
-	redisClient *redis.Client
+	redisClient types.StorageClient
 	router      *gin.Engine
 }
 

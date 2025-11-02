@@ -30,7 +30,7 @@ func NewClient(redisURL string) (*Client, error) {
 		return nil, fmt.Errorf("failed to connect to Redis: %w", err)
 	}
 
-	return &Client{rdb: rdb}, nil
+	return &Client{rdb}, nil
 }
 
 // Close closes the Redis connection
@@ -41,9 +41,4 @@ func (c *Client) Close() error {
 // Ping tests the Redis connection
 func (c *Client) Ping(ctx context.Context) error {
 	return c.rdb.Ping(ctx).Err()
-}
-
-// GetClient returns the underlying Redis client for advanced operations
-func (c *Client) GetClient() *redis.Client {
-	return c.rdb
 }

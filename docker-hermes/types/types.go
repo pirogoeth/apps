@@ -138,5 +138,5 @@ type LabelInfo struct {
 // ApiContext represents the API context for handlers
 type ApiContext struct {
 	Config      *Config
-	RedisClient interface{} // Will be *redis.Client in actual usage
+	RedisClient StorageClient
 }

@@ -20,7 +20,7 @@ import (
 type Agent struct {
 	config       *types.Config
 	dockerClient *DockerClient
-	redisClient  *redis.Client
+	storageClient types.StorageClient
 	reporter     *Reporter
 
 	// Metrics
@@ -40,13 +40,13 @@ func NewAgent(config *types.Config) (*Agent, error) {
 		return nil, fmt.Errorf("failed to create Docker client: %w", err)
 	}
 
-	redisClient, err := redis.NewClient(config.Redis.URL)
+	storageClient, err := redis.NewClient(config.Redis.URL)
 	if err != nil {
 		dockerClient.Close()
-		return nil, fmt.Errorf("failed to create Redis client: %w", err)
+		return nil, fmt.Errorf("failed to create storage client: %w", err)
 	}
 
-	reporter := NewReporter(redisClient, ReporterOpts{
+	reporter := NewReporter(storageClient, ReporterOpts{
 		LabelPrefix:       config.Agent.LabelPrefix,
 		HeartbeatInterval: config.Agent.HeartbeatInterval,
 		Hostname:          config.Agent.Hostname,
@@ -73,10 +73,10 @@ func NewAgent(config *types.Config) (*Agent, error) {
 	prometheus.MustRegister(containersTracked, updatesSent, errorsTotal)
 
 	return &Agent{
-		config:            config,
-		dockerClient:      dockerClient,
-		redisClient:       redisClient,
-		reporter:          reporter,
+		config:        config,
+		dockerClient:  dockerClient,
+		storageClient: storageClient,
+		reporter:      reporter,
 		containersTracked: containersTracked,
 		updatesSent:       updatesSent,
 		errorsTotal:       errorsTotal,
@@ -207,8 +207,8 @@ func (a *Agent) Close() error {
 		errs = append(errs, fmt.Errorf("failed to close Docker client: %w", err))
 	}
 
-	if err := a.redisClient.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("failed to close Redis client: %w", err))
+	if err := a.storageClient.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("failed to close storage client: %w", err))
 	}
 
 	if len(errs) > 0 {

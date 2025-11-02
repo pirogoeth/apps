@@ -14,7 +14,7 @@ import (
 
 // StoreContainer stores container information in Redis with TTL
 func (c *Client) StoreContainer(ctx context.Context, container *types.ContainerInfo, ttl time.Duration) error {
-	key := types.ContainerCacheKey(container.Host, container.ID)
+	key := containerCacheKey(container.Host, container.ID)
 
 	data, err := json.Marshal(container)
 	if err != nil {
@@ -27,17 +27,17 @@ func (c *Client) StoreContainer(ctx context.Context, container *types.ContainerI
 	pipe.Set(ctx, key, data, ttl)
 
 	// Add to host set
-	hostKey := types.HostsCacheKey()
+	hostKey := hostsCacheKey()
 	pipe.SAdd(ctx, hostKey, container.Host)
 	pipe.Expire(ctx, hostKey, ttl*2) // Keep host set longer
 
 	// Add labels to label sets
 	for labelKey, labelValue := range container.Labels {
-		labelCacheKey := types.LabelCacheKey(labelKey)
-		pipe.SAdd(ctx, labelCacheKey, labelValue)
-		pipe.Expire(ctx, labelCacheKey, ttl*2)
+		labelKeyStr := labelCacheKey(labelKey)
+		pipe.SAdd(ctx, labelKeyStr, labelValue)
+		pipe.Expire(ctx, labelKeyStr, ttl*2)
 	}
-	pipe.Expire(ctx, types.LabelsCacheKey(), ttl*2)
+	pipe.Expire(ctx, labelsCacheKey(), ttl*2)
 
 	_, err = pipe.Exec(ctx)
 	if err != nil {
@@ -50,7 +50,7 @@ func (c *Client) StoreContainer(ctx context.Context, container *types.ContainerI
 
 // GetContainer retrieves container information from Redis
 func (c *Client) GetContainer(ctx context.Context, host, containerID string) (*types.ContainerInfo, error) {
-	key := types.ContainerCacheKey(host, containerID)
+	key := containerCacheKey(host, containerID)
 
 	data, err := c.rdb.Get(ctx, key).Result()
 	if err != nil {
@@ -70,7 +70,7 @@ func (c *Client) GetContainer(ctx context.Context, host, containerID string) (*t
 
 // ListContainers retrieves all active containers
 func (c *Client) ListContainers(ctx context.Context) ([]*types.ContainerInfo, error) {
-	pattern := types.ContainerHostCacheKey("*")
+	pattern := containerHostCacheKey("*")
 	keys, err := c.rdb.Keys(ctx, pattern).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list container keys: %w", err)
@@ -129,7 +129,7 @@ func (c *Client) QueryByLabels(ctx context.Context, query *types.ContainerQuery)
 
 // PublishUpdate publishes a container update to Redis Stream
 func (c *Client) PublishUpdate(ctx context.Context, container *types.ContainerInfo) error {
-	streamKey := types.StreamCacheKey()
+	streamKey := streamCacheKey()
 
 	data, err := json.Marshal(container)
 	if err != nil {
@@ -176,13 +176,13 @@ func (c *Client) GetPrometheusTargets(ctx context.Context) (types.PrometheusSDRe
 // GetLabels retrieves all unique label keys and their values
 func (c *Client) GetLabels(ctx context.Context) ([]types.LabelInfo, error) {
 	// Get all label key patterns
-	pattern := types.LabelCacheKey("*")
+	pattern := labelCacheKey("*")
 	keys, err := c.rdb.Keys(ctx, pattern).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list label keys: %w", err)
 	}
 
-	labelsKeyPrefix := types.LabelsCacheKey()
+	labelsKeyPrefix := labelsCacheKey()
 	var labels []types.LabelInfo
 	for _, key := range keys {
 		// Extract label key from Redis key
@@ -206,7 +206,7 @@ func (c *Client) GetLabels(ctx context.Context) ([]types.LabelInfo, error) {
 
 // GetLabelValues retrieves all values for a specific label key
 func (c *Client) GetLabelValues(ctx context.Context, labelKey string) ([]string, error) {
-	key := types.LabelCacheKey(labelKey)
+	key := labelCacheKey(labelKey)
 	values, err := c.rdb.SMembers(ctx, key).Result()
 	if err != nil {
 		if err == redis.Nil {
@@ -220,7 +220,7 @@ func (c *Client) GetLabelValues(ctx context.Context, labelKey string) ([]string,
 
 // GetHosts retrieves all known hosts
 func (c *Client) GetHosts(ctx context.Context) ([]string, error) {
-	hostsKey := types.HostsCacheKey()
+	hostsKey := hostsCacheKey()
 	hosts, err := c.rdb.SMembers(ctx, hostsKey).Result()
 	if err != nil {
 		if err == redis.Nil {
@@ -234,7 +234,7 @@ func (c *Client) GetHosts(ctx context.Context) ([]string, error) {
 
 // CleanupExpired removes expired container data (called periodically)
 func (c *Client) CleanupExpired(ctx context.Context) error {
-	pattern := types.ContainerHostCacheKey("*")
+	pattern := containerHostCacheKey("*")
 	keys, err := c.rdb.Keys(ctx, pattern).Result()
 	if err != nil {
 		return fmt.Errorf("failed to list container keys for cleanup: %w", err)
