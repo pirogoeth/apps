@@ -1,0 +1,50 @@
+# docker-hermes configuration example
+# This file can be used with CONFIG_TYPE=file and CONFIG_FILE=path/to/this/file
+
+# Label configuration (shared by agent and server)
+labels:
+  # Filter label prefix for agent (empty = all labels)
+  # Only labels starting with this prefix will be processed
+  label_prefix: ""
+  
+  # Main label prefix (Traefik-style, default: "hermes")
+  # All target configuration uses this prefix
+  # Examples:
+  #   hermes.prometheus.scrape=true
+  #   hermes.targets.admin.prometheus.scrape=true
+  prefix: "hermes"
+
+# Redis connection
+redis:
+  url: "redis://localhost:6379"
+
+# Agent configuration
+agent:
+  docker_socket: "unix:///var/run/docker.sock"
+  heartbeat_interval: "30s"
+  hostname: ""  # Will auto-detect if empty
+  
+  # Target resolution strategy
+  # Options: hostname, container_ip, host_port, custom
+  target_resolution_strategy: "hostname"
+  target_resolution_host: ""  # Used with host_port or custom strategies
+
+# Server configuration
+server:
+  prometheus_sd_path: "/prometheus/sd"
+  
+  # Target resolution strategy (for Prometheus SD)
+  target_resolution_strategy: "hostname"
+  target_resolution_host: ""
+
+# Common configuration
+http:
+  listen_address: ":8080"
+
+tracing:
+  enabled: false
+  sampler_rate: 1.0
+  exporter_endpoint: ""
+  exporter_protocol: "grpc"
+  exporter_insecure: false
+  exporter_headers: {}

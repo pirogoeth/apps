@@ -25,8 +25,8 @@ const (
 	CFG_ENV   = "env"
 )
 
-// Load loads the configuration from Consul. Expects the Consul
-// configuration to be pulled from the environment.
+// Load loads the configuration from the specified config
+// backend as specified in the environment (CONFIG_TYPE).
 func Load[T any]() (*T, error) {
 	configType := os.Getenv(ENV_CFG_TYPE)
 	if configType == "" {
@@ -43,6 +43,19 @@ func Load[T any]() (*T, error) {
 	default:
 		return nil, fmt.Errorf("unknown config type: %s", configType)
 	}
+}
+
+// LoadWithDefaults executes Load() but also calls ApplyDefaults
+// on the resulting loaded config to apply defaults from struct
+// tags instead of zero-values.
+func LoadWithDefaults[T any]() (*T, error) {
+	cfg, err := Load[T]()
+	if err != nil {
+		return nil, fmt.Errorf("error loading config with defaults: %w", err)
+	}
+
+	ApplyDefaults(cfg)
+	return cfg, nil
 }
 
 // loadConfigFromNomad loads an app's config from a Nomad parameter inside the current namespace
