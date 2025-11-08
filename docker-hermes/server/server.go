@@ -76,7 +76,20 @@ func (s *Server) registerRoutes() error {
 // registerPrometheusSD registers the Prometheus HTTP SD endpoint
 func (s *Server) registerPrometheusSD(_ *types.ApiContext) error {
 	s.router.GET(s.config.Server.PrometheusSDPath, func(c *gin.Context) {
-		targets, err := s.redisClient.GetPrometheusTargets(c.Request.Context())
+		// Use server hostname or empty (defaults to container hostname)
+		agentHost := s.config.Agent.Hostname
+		if agentHost == "" {
+			agentHost = "unknown"
+		}
+
+		// Pass labels config to Redis operations
+		targets, err := s.redisClient.GetPrometheusTargets(
+			c.Request.Context(),
+			s.config.Server.TargetResolutionStrategy,
+			agentHost,
+			s.config.Server.TargetResolutionHost,
+			&s.config.Labels,
+		)
 		if err != nil {
 			logrus.Errorf("Failed to get Prometheus targets: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get targets"})

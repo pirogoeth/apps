@@ -1,9 +1,22 @@
 package types
 
 import (
-	"strconv"
 	"time"
 )
+
+// NetworkSettings represents network information for a container
+type NetworkSettings struct {
+	IPAddress string             `json:"ip_address"` // Primary IP
+	Networks  map[string]Network `json:"networks"`   // All networks
+}
+
+// Network represents a single network configuration
+type Network struct {
+	IPAddress   string `json:"ip_address"`
+	Gateway     string `json:"gateway"`
+	NetworkID   string `json:"network_id"`
+	NetworkName string `json:"network_name"`
+}
 
 // ContainerInfo represents information about a Docker container
 type ContainerInfo struct {
@@ -18,46 +31,12 @@ type ContainerInfo struct {
 	Image     string            `json:"image"`
 	Command   string            `json:"command"`
 	Status    string            `json:"status"`
-}
 
-// IsPrometheusScrapeTarget checks if a container should be included in Prometheus SD
-func (c *ContainerInfo) IsPrometheusScrapeTarget() bool {
-	if scrape, exists := c.Labels["prometheus.io/scrape"]; exists {
-		return scrape == "true"
-	}
-	return false
-}
+	// Network information for resolution
+	NetworkSettings NetworkSettings `json:"network_settings"`
 
-// GetPrometheusPort returns the port to scrape for Prometheus
-func (c *ContainerInfo) GetPrometheusPort() int {
-	if portStr, exists := c.Labels["prometheus.io/port"]; exists {
-		// Try to parse the port string
-		if port, err := strconv.Atoi(portStr); err == nil {
-			return port
-		}
-	}
-
-	// Default to first exposed port
-	if len(c.Ports) > 0 {
-		return c.Ports[0].PublicPort
-	}
-	return 0
-}
-
-// GetPrometheusPath returns the metrics path for Prometheus
-func (c *ContainerInfo) GetPrometheusPath() string {
-	if path, exists := c.Labels["prometheus.io/path"]; exists {
-		return path
-	}
-	return "/metrics"
-}
-
-// GetPrometheusScheme returns the scheme for Prometheus scraping
-func (c *ContainerInfo) GetPrometheusScheme() string {
-	if scheme, exists := c.Labels["prometheus.io/scheme"]; exists {
-		return scheme
-	}
-	return "http"
+	// Labels configuration reference (not serialized to JSON)
+	LabelsConfig *LabelsConfig `json:"-"`
 }
 
 // FilterLabelsByPrefix filters labels by the given prefix
@@ -75,36 +54,22 @@ func (c *ContainerInfo) FilterLabelsByPrefix(prefix string) map[string]string {
 	return filtered
 }
 
-// ToPrometheusTarget converts ContainerInfo to PrometheusTarget
-func (c *ContainerInfo) ToPrometheusTarget() *PrometheusTarget {
-	if !c.IsPrometheusScrapeTarget() {
-		return nil
+// GetPrimaryIP returns the primary IP address
+func (c *ContainerInfo) GetPrimaryIP() string {
+	if c.NetworkSettings.IPAddress != "" {
+		return c.NetworkSettings.IPAddress
 	}
 
-	port := c.GetPrometheusPort()
-	if port == 0 {
-		return nil
+	// Fall back to first network IP
+	for _, network := range c.NetworkSettings.Networks {
+		if network.IPAddress != "" {
+			return network.IPAddress
+		}
 	}
 
-	target := c.Host + ":" + strconv.Itoa(port)
-
-	labels := make(map[string]string)
-	labels["__meta_docker_container_id"] = c.ID
-	labels["__meta_docker_container_name"] = c.Name
-	labels["__meta_docker_container_image"] = c.Image
-	labels["__meta_docker_container_status"] = c.Status
-	labels["__meta_docker_host"] = c.Host
-
-	// Add all container labels
-	for key, value := range c.Labels {
-		labels[key] = value
-	}
-
-	return &PrometheusTarget{
-		Targets: []string{target},
-		Labels:  labels,
-	}
+	return ""
 }
+
 
 // PortInfo represents port information for a container
 type PortInfo struct {

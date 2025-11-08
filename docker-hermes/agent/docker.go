@@ -186,18 +186,35 @@ func (d *DockerClient) extractContainerInfoFromInspect(inspect dockerTypes.Conta
 		return nil, fmt.Errorf("failed to parse container creation timestamp: %w", err)
 	}
 
+	// Extract network settings
+	networkSettings := hermesTypes.NetworkSettings{
+		IPAddress: inspect.NetworkSettings.IPAddress,
+		Networks:  make(map[string]hermesTypes.Network),
+	}
+
+	for netName, netConfig := range inspect.NetworkSettings.Networks {
+		networkSettings.Networks[netName] = hermesTypes.Network{
+			IPAddress:   netConfig.IPAddress,
+			Gateway:     netConfig.Gateway,
+			NetworkID:   netConfig.NetworkID,
+			NetworkName: netName,
+		}
+	}
+
 	containerInfo := &hermesTypes.ContainerInfo{
-		ID:        inspect.ID,
-		Name:      name,
-		Host:      hostname,
-		Labels:    inspect.Config.Labels,
-		Ports:     ports,
-		State:     inspect.State.Status,
-		LastSeen:  time.Now(),
-		CreatedAt: createdAt,
-		Image:     inspect.Config.Image,
-		Command:   command,
-		Status:    inspect.State.Status,
+		ID:              inspect.ID,
+		Name:            name,
+		Host:            hostname,
+		Labels:          inspect.Config.Labels,
+		Ports:           ports,
+		State:           inspect.State.Status,
+		LastSeen:        time.Now(),
+		CreatedAt:       createdAt,
+		Image:           inspect.Config.Image,
+		Command:         command,
+		Status:          inspect.State.Status,
+		NetworkSettings: networkSettings,
+		// LabelsConfig will be attached by the reporter
 	}
 
 	logrus.WithField("container", containerInfo).Debugf("Extracted container info")

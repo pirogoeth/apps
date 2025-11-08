@@ -26,7 +26,7 @@ type StorageClient interface {
 	PublishUpdate(ctx context.Context, container *ContainerInfo) error
 
 	// GetPrometheusTargets retrieves all containers that should be scraped by Prometheus
-	GetPrometheusTargets(ctx context.Context) (PrometheusSDResponse, error)
+	GetPrometheusTargets(ctx context.Context, strategy TargetResolutionStrategy, agentHost, customHost string, labelsConfig *LabelsConfig) (PrometheusSDResponse, error)
 
 	// GetLabels retrieves all unique label keys and their values
 	GetLabels(ctx context.Context) ([]LabelInfo, error)

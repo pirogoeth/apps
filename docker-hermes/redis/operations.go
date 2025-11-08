@@ -157,7 +157,7 @@ func (c *Client) PublishUpdate(ctx context.Context, container *types.ContainerIn
 }
 
 // GetPrometheusTargets retrieves all containers that should be scraped by Prometheus
-func (c *Client) GetPrometheusTargets(ctx context.Context) (types.PrometheusSDResponse, error) {
+func (c *Client) GetPrometheusTargets(ctx context.Context, strategy types.TargetResolutionStrategy, agentHost, customHost string, labelsConfig *types.LabelsConfig) (types.PrometheusSDResponse, error) {
 	containers, err := c.ListContainers(ctx)
 	if err != nil {
 		return nil, err
@@ -165,9 +165,12 @@ func (c *Client) GetPrometheusTargets(ctx context.Context) (types.PrometheusSDRe
 
 	var targets types.PrometheusSDResponse
 	for _, container := range containers {
-		if target := container.ToPrometheusTarget(); target != nil {
-			targets = append(targets, *target)
-		}
+		// Attach labels config to containers retrieved from Redis (they won't have it)
+		container.LabelsConfig = labelsConfig
+
+		// Get all targets from this container
+		containerTargets := container.ToPrometheusTargets(strategy, agentHost, customHost)
+		targets = append(targets, containerTargets...)
 	}
 
 	return targets, nil

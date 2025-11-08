@@ -11,10 +11,11 @@ import (
 )
 
 type ReporterOpts struct {
-	LabelPrefix       string
-	HeartbeatInterval time.Duration
-	Hostname          string
-	Labels            map[string]string
+	HeartbeatInterval        time.Duration
+	Hostname                 string
+	LabelsConfig             *types.LabelsConfig
+	TargetResolutionStrategy types.TargetResolutionStrategy
+	TargetResolutionHost     string
 }
 
 // Reporter handles reporting container information to storage
@@ -33,9 +34,22 @@ func NewReporter(storageClient types.StorageClient, opts ReporterOpts) *Reporter
 
 // ReportContainer reports container information to storage
 func (r *Reporter) ReportContainer(ctx context.Context, container *types.ContainerInfo) error {
+	// Attach labels config to container
+	container.LabelsConfig = r.opts.LabelsConfig
+
 	// Filter labels by prefix if specified
-	if r.opts.LabelPrefix != "" {
-		container.Labels = container.FilterLabelsByPrefix(r.opts.LabelPrefix)
+	if r.opts.LabelsConfig != nil && r.opts.LabelsConfig.LabelPrefix != "" {
+		container.Labels = container.FilterLabelsByPrefix(r.opts.LabelsConfig.LabelPrefix)
+	}
+
+	// Pre-resolve targets for validation
+	targets := container.ResolveTargets(r.opts.TargetResolutionStrategy, r.opts.Hostname, r.opts.TargetResolutionHost)
+	if len(targets) > 0 {
+		// Log resolved targets for debugging
+		for i, target := range targets {
+			logrus.Debugf("Container %s target %d: %s%s%s",
+				container.ID, i, target.Scheme, target.Address, target.Path)
+		}
 	}
 
 	// Set TTL to 2x heartbeat interval (default 60s)

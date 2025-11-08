@@ -18,10 +18,10 @@ import (
 
 // Agent represents the docker-hermes agent
 type Agent struct {
-	config       *types.Config
-	dockerClient *DockerClient
+	config        *types.Config
+	dockerClient  *DockerClient
 	storageClient types.StorageClient
-	reporter     *Reporter
+	reporter      *Reporter
 
 	// Metrics
 	containersTracked prometheus.Gauge
@@ -40,6 +40,7 @@ func NewAgent(config *types.Config) (*Agent, error) {
 		return nil, fmt.Errorf("failed to create Docker client: %w", err)
 	}
 
+	// TODO: Resolve storage client type based on config
 	storageClient, err := redis.NewClient(config.Redis.URL)
 	if err != nil {
 		dockerClient.Close()
@@ -47,10 +48,11 @@ func NewAgent(config *types.Config) (*Agent, error) {
 	}
 
 	reporter := NewReporter(storageClient, ReporterOpts{
-		LabelPrefix:       config.Agent.LabelPrefix,
-		HeartbeatInterval: config.Agent.HeartbeatInterval,
-		Hostname:          config.Agent.Hostname,
-		Labels:            config.Agent.Labels,
+		HeartbeatInterval:        config.Agent.HeartbeatInterval,
+		Hostname:                 config.Agent.Hostname,
+		LabelsConfig:             &config.Labels,
+		TargetResolutionStrategy: config.Agent.TargetResolutionStrategy,
+		TargetResolutionHost:     config.Agent.TargetResolutionHost,
 	})
 
 	// Initialize metrics
@@ -73,10 +75,10 @@ func NewAgent(config *types.Config) (*Agent, error) {
 	prometheus.MustRegister(containersTracked, updatesSent, errorsTotal)
 
 	return &Agent{
-		config:        config,
-		dockerClient:  dockerClient,
-		storageClient: storageClient,
-		reporter:      reporter,
+		config:            config,
+		dockerClient:      dockerClient,
+		storageClient:     storageClient,
+		reporter:          reporter,
 		containersTracked: containersTracked,
 		updatesSent:       updatesSent,
 		errorsTotal:       errorsTotal,
